@@ -164,6 +164,18 @@ export class TeslaFleetService {
   // ── Vehicle data ──────────────────────────────────────────────────────────
 
   /**
+   * Clears TESLA_BILLING_BLOCKED_KEY on any successful Fleet API response.
+   * Without this, the flag only expires via its 6h TTL — meaning a lockout
+   * that was actually resolved (limit raised) would still silently block
+   * normal (non-bypass) REST polling for up to 6h after Tesla started
+   * accepting requests again. Found 2026-08-31 right after raising the limit:
+   * classification worked correctly but nothing cleared the flag on recovery.
+   */
+  private async clearBillingBlockedFlag(): Promise<void> {
+    await this.redis.del(TESLA_BILLING_BLOCKED_KEY).catch(() => {});
+  }
+
+  /**
    * Classifies a failed Tesla API call, and — on billing_limit / unauthorized —
    * sets the account-wide TESLA_BILLING_BLOCKED_KEY flag and fires a deduplicated
    * Telegram alert. Never throws; callers keep their existing null/throw behavior.
@@ -202,6 +214,7 @@ export class TeslaFleetService {
           headers: { Authorization: `Bearer ${accessToken}` },
         }),
       );
+      void this.clearBillingBlockedFlag();
       return response.data.response ?? [];
     } catch (error) {
       await this.handleClassifiedFailure('Failed to fetch vehicles', error);
@@ -223,6 +236,7 @@ export class TeslaFleetService {
           headers: { Authorization: `Bearer ${accessToken}` },
         }),
       );
+      void this.clearBillingBlockedFlag();
       return response.data.response ?? null;
     } catch (error) {
       await this.handleClassifiedFailure(`Failed to fetch vehicle summary for ${teslaVehicleId}`, error);
@@ -250,6 +264,7 @@ export class TeslaFleetService {
           },
         ),
       );
+      void this.clearBillingBlockedFlag();
       return response.data.response;
     } catch (error) {
       await this.handleClassifiedFailure(`Tesla API error for vehicle ${teslaVehicleId}`, error);
