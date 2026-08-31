@@ -1,0 +1,254 @@
+{
+  "common": {
+    "loading": "Wird geladen…",
+    "retry": "Erneut versuchen",
+    "cancel": "Abbrechen",
+    "justNow": "Gerade eben",
+    "secondsAgo": "vor {{count}} s",
+    "minutesAgo": "vor {{count}} Min.",
+    "hoursAgo": "vor {{count}} Std.",
+    "today": "Heute",
+    "yesterday": "Gestern",
+    "km": "km",
+    "kwh": "kWh",
+    "whPerKm": "Wh/km",
+    "unknown": "Unbekannt",
+    "back": "Zurück"
+  },
+  "tabs": {
+    "home": "Start",
+    "drive": "Fahrten",
+    "charge": "Laden",
+    "insights": "Insights",
+    "more": "Mehr"
+  },
+  "vehicleState": {
+    "charging": "Lädt",
+    "driving": "Fährt",
+    "parked": "Geparkt",
+    "sleeping": "Ruhemodus",
+    "offline": "Offline",
+    "unknown": "Unbekannt"
+  },
+  "dataQuality": {
+    "realtime": "Live",
+    "delayed": "Kürzliche Daten",
+    "stale": "Daten veraltet",
+    "offline": "Keine aktuellen Daten",
+    "lastSeen": "Zuletzt gesehen {{time}}"
+  },
+  "confidence": {
+    "high": "Hohe Verlässlichkeit",
+    "medium": "Mittlere Verlässlichkeit",
+    "low": "Noch nicht genug Daten"
+  },
+  "home": {
+    "eyebrow": "EVPulse",
+    "battery": "Batterie",
+    "range": "Reichweite",
+    "outside": "Außen",
+    "state": "Status",
+    "updated": "Aktualisiert",
+    "chargingPower": "Ladeleistung",
+    "idle": "Inaktiv",
+    "rangeLabel": "{{km}} km Reichweite",
+    "rangeLabelCharging": "{{km}} km Reichweite · Lädt",
+    "errorLoadingStatus": "Status konnte nicht geladen werden — zum Aktualisieren ziehen",
+    "emptyTitle": "Kein Fahrzeug verbunden",
+    "emptyBody": "Verbinde dein Tesla, um Live-Daten zu sehen.",
+    "connectTesla": "Tesla verbinden",
+    "today": {
+      "title": "Heute",
+      "summary_one": "{{count}} Fahrt · {{km}} km · {{kwh}} kWh",
+      "summary_other": "{{count}} Fahrten · {{km}} km · {{kwh}} kWh",
+      "empty": "Heute noch keine Fahrten",
+      "error": "Tageszusammenfassung konnte nicht geladen werden — zum Aktualisieren ziehen"
+    },
+    "activeCharge": {
+      "title": "Lädt gerade",
+      "summary": "{{energy}} kWh geladen"
+    },
+    "lastTrip": {
+      "title": "Letzte Fahrt",
+      "summary": "{{distance}} km · {{efficiency}} Wh/km",
+      "empty": "Noch keine Fahrten erfasst",
+      "processing": "Letzte Fahrt wird verarbeitet…"
+    },
+    "alerts": {
+      "criticalSocTitle": "Batterie kritisch niedrig",
+      "criticalSocMessage": "Noch {{soc}}% — bald eine Ladestation suchen.",
+      "lowSocTitle": "Batterie wird schwach",
+      "lowSocMessage": "Noch {{soc}}%."
+    },
+    "insight": {
+      "coldWeatherTitle": "Geringere Effizienz — kaltes Wetter",
+      "coldWeatherMessage": "Es sind {{temp}} °C draußen. Bei kaltem Wetter ist eine geringere Effizienz normal — keine Aktion nötig.",
+      "allGoodTitle": "Alles sieht normal aus",
+      "allGoodMessage": "Keine ungewöhnlichen Muster bei Batterie oder Effizienz in deiner letzten Aktivität.",
+      "staleTitle": "Daten sind etwas älter",
+      "staleMessage": "Das Fahrzeug ist möglicherweise geparkt oder schläft gerade ein. EVPulse weckt es nicht auf, um Akku zu sparen und unnötige API-Aufrufe zu vermeiden.",
+      "offlineTitle": "Keine aktuellen Daten",
+      "offlineMessage": "Das Fahrzeug ist möglicherweise nicht erreichbar oder im Ruhemodus. EVPulse aktualisiert den Status, sobald neue Daten eintreffen."
+    }
+  },
+  "drive": {
+    "title": "Fahrten",
+    "subtitle": "Routen und Effizienz",
+    "history": "Verlauf",
+    "total": "Gesamt",
+    "avgEfficiency": "Ø Effizienz",
+    "trips": "Fahrten",
+    "latestTrip": "Letzte Fahrt",
+    "noVehicle": "Wähle nach der Tesla-Verknüpfung ein Fahrzeug unter „Mehr“ aus.",
+    "empty": "Für dieses Fahrzeug sind keine Fahrten erfasst.",
+    "errorLoading": "Fahrten konnten nicht geladen werden — zum Aktualisieren ziehen",
+    "eco": "Eco",
+    "good": "Gut",
+    "avg": "Ø",
+    "high": "Hoch",
+    "dataQualityLimited": "Eingeschränkte Datenqualität",
+    "filter": {
+      "all": "Alle",
+      "7d": "7T",
+      "30d": "30T",
+      "90d": "90T"
+    },
+    "tripDetail": {
+      "batteryUsed": "Batterie {{start}}% → {{end}}%",
+      "errorQuality": "Fahrtqualität konnte nicht geladen werden — zum Aktualisieren ziehen",
+      "qualityGood": "Diese Fahrt sieht normal aus — keine Qualitätshinweise.",
+      "severity": {
+        "ok": "Normal",
+        "warning": "Auffällig",
+        "repaired": "Automatisch repariert",
+        "degraded": "Eingeschränkt"
+      },
+      "qualityMessage": {
+        "warning": "Einige Messwerte dieser Fahrt wirkten auffällig — Angaben können ungenau sein.",
+        "repaired": "Einige Daten dieser Fahrt wurden automatisch aus einer Signallücke repariert.",
+        "degraded": "Die Datenqualität dieser Fahrt ist eingeschränkt — Angaben können ungenau sein."
+      }
+    }
+  },
+  "charge": {
+    "title": "Laden",
+    "subtitle": "Sitzungen und Energie",
+    "history": "Verlauf",
+    "chargingInProgress": "Ladevorgang läuft",
+    "started": "Gestartet",
+    "duration": "Dauer",
+    "soc": "Ladestand",
+    "energy": "Energie",
+    "totalEnergy": "Gesamtenergie",
+    "totalCost": "Gesamtkosten",
+    "sessions": "Sitzungen",
+    "noVehicle": "Verknüpfe zuerst ein Fahrzeug über die Tesla-Anmeldung.",
+    "empty": "Noch keine Ladesitzungen.",
+    "errorLoading": "Ladesitzungen konnten nicht geladen werden — zum Aktualisieren ziehen",
+    "efficiencyShort": "Eff.",
+    "chargerType": {
+      "supercharger": "Supercharger",
+      "dcFast": "DC-Schnellladen",
+      "acPublic": "AC öffentlich",
+      "home": "Zuhause",
+      "unknown": "Unbekannt"
+    },
+    "tariff": {
+      "title": "Kostenprognose",
+      "weekly": "Prognose diese Woche",
+      "monthly": "Prognose diesen Monat",
+      "error": "Kostenprognose konnte nicht geladen werden — zum Aktualisieren ziehen",
+      "source": {
+        "sessions": "Aus deinen Sitzungen",
+        "settings": "Dein konfigurierter Tarif",
+        "default": "Geschätzter Standardtarif",
+        "override": "Individueller Tarif"
+      }
+    },
+    "breakdown": {
+      "title": "Zuhause vs. Supercharger",
+      "home": "Zuhause",
+      "supercharger": "Supercharger",
+      "other": "Sonstige öffentlich",
+      "basedOn_one": "Basierend auf deiner letzten {{count}} Sitzung",
+      "basedOn_other": "Basierend auf deinen letzten {{count}} Sitzungen"
+    }
+  },
+  "insights": {
+    "title": "Insights",
+    "subtitle": "Batterie · Effizienz · Laden",
+    "batteryHealth": "Batteriezustand",
+    "stateOfHealth": "Gesundheitszustand",
+    "capacityLoss": "Kapazitätsverlust",
+    "estCapacity": "Geschätzte Kapazität",
+    "nominalCapacity": "Nennkapazität",
+    "noHealthData": "Keine Daten zum Batteriezustand verfügbar.",
+    "sohTrend": "SOH-Verlauf",
+    "degradationPerMonth": "≈{{value}} % Abbau pro Monat",
+    "notEnoughData": "Noch nicht genug Daten",
+    "notEnoughDataBody": "Fahre und lade weiterhin normal — wir brauchen noch ein paar vollständige Ladevorgänge für eine verlässliche Schätzung.",
+    "drivingEfficiency": "Fahreffizienz",
+    "average": "Durchschnitt",
+    "bestSession": "Beste Fahrt",
+    "totalDriven": "Gesamt gefahren",
+    "tripsAnalysed": "Analysierte Fahrten",
+    "efficiencyTrend": "Effizienzverlauf (letzte Fahrten)",
+    "chargingStats": "Ladestatistik",
+    "totalEnergyCharged": "Geladene Gesamtenergie",
+    "avgPerSession": "Ø pro Sitzung",
+    "noVehicle": "Kein Fahrzeug ausgewählt.",
+    "errorHealth": "Batteriezustand konnte nicht geladen werden — zum Aktualisieren ziehen",
+    "errorDegradation": "Verlaufsdaten konnten nicht geladen werden — zum Aktualisieren ziehen",
+    "errorTrips": "Fahreffizienz konnte nicht geladen werden — zum Aktualisieren ziehen",
+    "errorCharging": "Ladestatistik konnte nicht geladen werden — zum Aktualisieren ziehen",
+    "samples_one": "{{count}} Messwert",
+    "samples_other": "{{count}} Messwerte",
+    "basedOnCycles_one": "{{count}} Ladezyklus berücksichtigt",
+    "basedOnCycles_other": "{{count}} Ladezyklen berücksichtigt"
+  },
+  "more": {
+    "title": "Mehr",
+    "subtitle": "Konto · Tesla · Sicherheit",
+    "vehicle": "Fahrzeug",
+    "noVehicles": "Noch kein Fahrzeug verknüpft.",
+    "errorVehicles": "Fahrzeuge konnten nicht geladen werden — zum Aktualisieren ziehen",
+    "connectTesla": "Tesla verbinden (Browser)",
+    "checkingTesla": "Tesla wird geprüft…",
+    "biometricLock": "Biometrische App-Sperre",
+    "biometricHint": "Wenn aktiviert, ist nach der Rückkehr aus dem Hintergrund Face ID / Fingerabdruck erforderlich.",
+    "signOut": "Abmelden",
+    "language": "Sprache",
+    "help": "Hilfe & Diagnose",
+    "appVersion": "App-Version",
+    "apiConnection": "Live-Verbindung",
+    "connected": "Verbunden",
+    "disconnected": "Getrennt",
+    "security": "Sicherheit",
+    "teslaConnection": "Tesla-Verbindung",
+    "alerts": {
+      "teslaTitle": "Tesla",
+      "linkFailed": "Tesla-Verknüpfung konnte nicht gestartet werden.",
+      "completeInBrowser": "Schließe die Anmeldung im Browser ab und kehre dann hierher zurück. Wir prüfen dann deine Verbindung.",
+      "checkStatus": "Status prüfen",
+      "connected": "Verbunden.",
+      "notConnectedYet": "Noch nicht verbunden — versuche es in einer Minute erneut.",
+      "biometricsTitle": "Biometrie",
+      "noHardware": "Keine biometrische Hardware verfügbar.",
+      "notEnrolled": "Richte zuerst Face ID / Fingerabdruck in den Systemeinstellungen ein."
+    }
+  },
+  "login": {
+    "signIn": "Anmelden",
+    "hint": "Verwende dein EVPulse-Konto. Tesla OAuth bleibt auf dem Server.",
+    "email": "E-Mail",
+    "password": "Passwort",
+    "continue": "Weiter"
+  },
+  "biometric": {
+    "unlockPrompt": "EVPulse entsperren",
+    "cancel": "Abbrechen",
+    "locked": "Gesperrt",
+    "confirmIdentity": "Bestätige deine Identität, um fortzufahren.",
+    "unlock": "Entsperren"
+  }
+}

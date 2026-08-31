@@ -24,7 +24,6 @@
       "buildNumber": "1",
       "infoPlist": {
         "NSFaceIDUsageDescription": "Use Face ID to unlock EVPulse securely.",
-        "NSLocationWhenInUseUsageDescription": "EVPulse uses your location to show trips on the map.",
         "UIBackgroundModes": [
           "remote-notification"
         ],
@@ -49,8 +48,6 @@
         "backgroundColor": "#0B0B0F"
       },
       "permissions": [
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION",
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE"
       ]
@@ -58,6 +55,7 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      "expo-localization",
       [
         "expo-notifications",
         {

@@ -11,16 +11,18 @@ import {
 } from 'react-native';
 import { isAxiosError } from 'axios';
 import { useRouter } from 'expo-router';
-import { colors, radius, spacing } from '@/theme/tokens';
+import { useTranslation } from 'react-i18next';
+import { color, radius, space, type as tType } from '@/theme/tokens';
+import { Wordmark } from '@/components/ui/Wordmark';
 import { useLogin } from '@/features/auth/useLogin';
 
 export default function LoginScreen() {
+  const { t } = useTranslation();
   const router = useRouter();
   const { mutateAsync, isPending, error } = useLogin();
   const errMsg = error
     ? isAxiosError(error)
-      ? (error.response?.data as { message?: string } | undefined)?.message ??
-        error.message
+      ? (error.response?.data as { message?: string } | undefined)?.message ?? error.message
       : (error as Error).message
     : null;
   const [email, setEmail] = useState('');
@@ -32,19 +34,16 @@ export default function LoginScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.screen}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.inner}>
-        <Text style={styles.eyebrow}>EVPulse</Text>
-        <Text style={styles.title}>Sign in</Text>
-        <Text style={styles.hint}>Use your EVPulse account. Tesla OAuth stays on the server.</Text>
+        <Wordmark size="large" />
+        <Text style={styles.title}>{t('login.signIn')}</Text>
+        <Text style={styles.hint}>{t('login.hint')}</Text>
 
         <TextInput
           style={styles.input}
-          placeholder="Email"
-          placeholderTextColor={colors.textMuted}
+          placeholder={t('login.email') ?? undefined}
+          placeholderTextColor={color.text.tertiary}
           autoCapitalize="none"
           keyboardType="email-address"
           autoComplete="email"
@@ -53,8 +52,8 @@ export default function LoginScreen() {
         />
         <TextInput
           style={styles.input}
-          placeholder="Password"
-          placeholderTextColor={colors.textMuted}
+          placeholder={t('login.password') ?? undefined}
+          placeholderTextColor={color.text.tertiary}
           secureTextEntry
           value={password}
           onChangeText={setPassword}
@@ -66,48 +65,41 @@ export default function LoginScreen() {
           style={[styles.btn, isPending && styles.btnDisabled]}
           onPress={() => void onSubmit()}
           disabled={isPending}
+          accessibilityRole="button"
         >
           {isPending ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={color.text.onTeal} />
           ) : (
-            <Text style={styles.btnText}>Continue</Text>
+            <Text style={styles.btnText}>{t('login.continue')}</Text>
           )}
         </Pressable>
-
       </View>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
-  inner: { flex: 1, padding: spacing.lg, justifyContent: 'center', gap: spacing.sm },
-  eyebrow: {
-    color: colors.cyan,
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  title: { color: colors.textPrimary, fontSize: 28, fontWeight: '700' },
-  hint: { color: colors.textSecondary, fontSize: 14, marginBottom: spacing.md },
+  screen: { flex: 1, backgroundColor: color.bg.app },
+  inner: { flex: 1, padding: space.lg, justifyContent: 'center', gap: space.sm },
+  title: { ...tType.h1, color: color.text.primary, marginTop: space.lg },
+  hint: { color: color.text.secondary, fontSize: 14, marginBottom: space.md },
   input: {
-    backgroundColor: colors.surface,
+    backgroundColor: color.bg.surface1,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: color.border.subtle,
     borderRadius: radius.md,
     padding: 14,
-    color: colors.textPrimary,
+    color: color.text.primary,
     fontSize: 16,
   },
   btn: {
-    backgroundColor: colors.primary,
+    backgroundColor: color.brand.teal400,
     borderRadius: radius.md,
-    paddingVertical: 14,
+    paddingVertical: space.buttonVertical,
     alignItems: 'center',
-    marginTop: spacing.sm,
+    marginTop: space.sm,
   },
   btnDisabled: { opacity: 0.7 },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  err: { color: colors.danger, fontSize: 13 },
+  btnText: { ...tType.bodyStrong, color: color.text.onTeal, fontSize: 16 },
+  err: { color: color.semantic.danger, fontSize: 13 },
 });

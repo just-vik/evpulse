@@ -1,5 +1,21 @@
 # EVPulse — App Store Beta (TestFlight) Checklist
 
+## ⚠️ Проверено перед публикацией (2026-08-31, обновлено в рамках P0)
+
+Два пункта из этого чек-листа были явно перепроверены по исходному коду `apps/mobile/src` перед тем, как
+что-либо утверждать в App Store Connect / privacy policy. Полный аудит — в
+[`../../docs/MOBILE_PRODUCT_DESIGN.md`](../../docs/MOBILE_PRODUCT_DESIGN.md).
+
+| Проверка | Результат | Основание |
+|---|---|---|
+| «Tesla credentials are never stored on your device» (строка ниже, «ГОТОВОЕ ОПИСАНИЕ») | ✅ **Подтверждено, можно публиковать как есть** | В `SecureStore` пишутся только `access_token`/`refresh_token`/`user_id` (собственный JWT EVPulse), `biometric_lock_enabled`, `selected_vehicle_id`. Tesla OAuth полностью server-side: `useTeslaOAuth.ts` только запрашивает `/auth/tesla/link` (URL для браузера) и опрашивает `/auth/tesla/status` (boolean) — токен Tesla в мобильный клиент никогда не попадает. |
+| `NSLocationWhenInUseUsageDescription` (iOS) + `ACCESS_FINE_LOCATION`/`ACCESS_COARSE_LOCATION` (Android) в `app.json` | ✅ **Удалены в P0 (подтверждено твоим решением).** EVPulse не запрашивает и не использует местоположение телефона — карта в Drive показывает только записанный маршрут поездки (GPS из Tesla telemetry на сервере). В коде нет `expo-location`, нет `navigator.geolocation`, `MapView` не использует `showsUserLocation`/`followsUserLocation`. При будущем добавлении реальной функции «показать меня на карте» permission нужно будет добавить заново вместе с отдельным privacy review — не восстанавливать этот же permission по инерции. |
+
+Отдельно: пункт «Какие данные собираются (email, Tesla token, location)» в privacy-policy ниже (§4) остаётся
+верным **в смысле локации автомобиля** (GPS поездок и зарядных сессий действительно хранится на сервере) — это
+не то же самое, что device location permission выше. Формулировку в privacy policy стоит уточнить: «location of
+your vehicle (from Tesla telemetry)», а не «your location». EVPulse currently does not collect device location.
+
 ## ✅ ГОТОВО В КОДЕ
 
 | Пункт | Статус |

@@ -1,18 +1,34 @@
 # Tesla Analytics Platform - Remaining Work & Roadmap
 
-## 🎯 Current Status: Phase 2A COMPLETE ✅
+## 🎯 Current Status (updated 2026-08-31): Backend + Web + Mobile all exist and are in active use
 
-The backend is now in production-ready state with real Tesla integration. This document outlines remaining work to reach full SaaS platform.
+**⚠️ Everything below "Immediate Next Steps" in this file predates `apps/web` and `apps/mobile` existing at
+all** — it was written when the frontend was still a plan, not a product. It is kept for historical reference on
+original scope/estimates, but **do not treat unchecked `[ ]` boxes below as "not built"** — most of Priority 1–3
+and much of Phase 2C is now implemented in `apps/web` and, more partially, `apps/mobile`. Current, accurate specs
+for what exists and what's missing on mobile specifically live in
+[`MOBILE_PRODUCT_DESIGN.md`](./MOBILE_PRODUCT_DESIGN.md) (full code audit, screen-by-screen), which supersedes
+the "Mobile App" section below entirely. This top section is the only part of this file actively corrected;
+the rest is left as-is pending a fuller roadmap rewrite.
+
+The backend is in production-ready state with real Tesla integration.
 
 ---
 
-## 📋 Immediate Next Steps (Phase 2B: Frontend & Notifications)
+## 📋 Immediate Next Steps (Phase 2B: Frontend & Notifications) — ⚠️ STALE, see note above
 
-### 🔲 PRIORITY 1: Next.js Frontend Dashboard (1-2 weeks)
+### ✅ PRIORITY 1: Next.js Frontend Dashboard — largely built, not "not started"
 
-**Estimated Effort**: 80-100 hours
+`apps/web` already exists (Next.js App Router, TypeScript, TailwindCSS, TanStack Query, Zustand, Socket.io-client
+— i.e. the tech stack below, correctly predicted) and already ships: dashboard, vehicle status, trips, charging
+sessions, battery health/degradation, insights feed with confidence scoring, notifications types, a full
+FREE/PRO/FLEET Stripe billing model, and i18n in en/de/ru. What it does **not** yet have: vehicle command
+controls in a fully premium UI, and its `UpgradeModal.tsx` pricing/copy is out of date relative to the canonical
+plan model now defined in [`MOBILE_SUBSCRIPTIONS.md`](./MOBILE_SUBSCRIPTIONS.md) §0–1 (needs a follow-up pass,
+tracked in `MOBILE_PRODUCT_DESIGN.md`'s P3 backlog item). The original component/page breakdown below is kept
+for historical reference only — it does not reflect `apps/web`'s actual current structure.
 
-**Components Needed**:
+**Original planning breakdown (historical, not current file structure):**
 ```
 dashboard/
 ├── pages/
@@ -43,29 +59,29 @@ dashboard/
     └── ws/ (WebSocket client)
 ```
 
-**Key Features**:
-- [ ] Real-time dashboard with key metrics
-- [ ] Vehicle list with quickstats
-- [ ] Real-time location tracking (Mapbox/Leaflet)
-- [ ] Live telemetry charts (SOC, speed, temp)
-- [ ] Trip history timeline
-- [ ] Charging sessions list
-- [ ] Battery degradation graph
-- [ ] Vehicle command controls (lock, charge, etc.)
-- [ ] User account settings
-- [ ] Dark mode support
+**Key Features (status corrected):**
+- [x] Real-time dashboard with key metrics
+- [x] Vehicle list with quickstats
+- [x] Real-time location tracking (trip map — see `apps/web/src/components` map/trips components)
+- [x] Live telemetry charts (SOC, speed, temp)
+- [x] Trip history timeline
+- [x] Charging sessions list
+- [x] Battery degradation graph
+- [x] Vehicle command controls (lock, charge, etc.) — `useVehicleCommands.ts`
+- [x] User account settings
+- [x] Dark mode support
 
-**Tech Stack**:
-- Next.js 14+ (React 18)
+**Tech Stack (as actually used in `apps/web`):**
+- Next.js (App Router, React 19)
 - TypeScript
 - TailwindCSS
-- Mapbox GL / Leaflet
-- Recharts (for analytics)
+- react-native-maps / web map components (per-platform)
+- Recharts / gifted-charts (mobile) for analytics
 - Zustand (state management)
 - TanStack Query (data fetching)
 - Socket.io-client (WebSocket)
 
-**Database**: PostgreSQL (share with backend)
+**Database**: PostgreSQL/TimescaleDB (shared with backend)
 
 ---
 
@@ -168,14 +184,22 @@ automation/
 
 ---
 
-### 🔲 SaaS Billing System (1-2 weeks)
+### ✅ SaaS Billing System — built on web, mobile IAP spec'd but not built
 
-**Payment Provider**: Stripe
+**⚠️ The plans/pricing below are historical and superseded.** Web's Stripe billing already exists
+(`apps/web/src/types/billing.ts`, `useSubscription.ts`) with a `FREE/PRO/FLEET` enum, and a canonical
+`FREE | PRO | PRO_PLUS | FLEET` model with EUR pricing and a mobile Apple-IAP plan has since been specified in
+[`MOBILE_SUBSCRIPTIONS.md`](./MOBILE_SUBSCRIPTIONS.md) — that document is the source of truth for plans/pricing
+going forward, not this section. Web's `UpgradeModal.tsx` still needs a follow-up pass to match it (tracked in
+`MOBILE_PRODUCT_DESIGN.md`'s P3 backlog).
 
-**Plans**:
-- Free: 1 vehicle, 7-day data retention
-- Pro: 5 vehicles, unlimited data, advanced analytics ($9.99/mo)
-- Fleet: 100+ vehicles, team access, API access ($99+/mo)
+**Payment Provider**: Stripe (web) + StoreKit 2 / App Store Server API (mobile, default per
+`MOBILE_SUBSCRIPTIONS.md` §5 — no third-party billing SaaS)
+
+**Plans** (historical, do not use — see `MOBILE_SUBSCRIPTIONS.md` §1 instead):
+- ~~Free: 1 vehicle, 7-day data retention~~
+- ~~Pro: 5 vehicles, unlimited data, advanced analytics ($9.99/mo)~~
+- ~~Fleet: 100+ vehicles, team access, API access ($99+/mo)~~
 
 **Features**:
 - [ ] Stripe OAuth integration
@@ -216,9 +240,17 @@ automation/
 
 ---
 
-### 🔲 Mobile App (React Native) (2-4 weeks)
+### ✅ Mobile App (Expo/React Native) — exists, redesign spec'd
 
-**Features**:
+**⚠️ This section is superseded by [`MOBILE_PRODUCT_DESIGN.md`](./MOBILE_PRODUCT_DESIGN.md).** `apps/mobile`
+already exists (Expo SDK 54, Expo Router, TypeScript) with 5 tabs (Home/Trips/Charging/Analytics/Settings),
+Tesla OAuth linking, biometric app lock, push notification registration, live telemetry via socket, trip/charging
+history, and battery health/degradation charts. It does **not** yet have: vehicle lock/unlock/charge commands,
+i18n, a shared component library, or subscription awareness — all covered in detail (with a full code audit and
+phased P0–P5 backlog) in `MOBILE_PRODUCT_DESIGN.md`. The original feature/architecture sketch below is kept for
+historical reference only.
+
+**Original planning sketch (historical):**
 - Lock/unlock vehicle
 - View live location
 - Check battery/charge state
@@ -227,7 +259,6 @@ automation/
 - Receive push notifications
 - View recent trips
 
-**Architecture**:
 ```
 mobile/
 ├── screens/
@@ -525,7 +556,13 @@ mobile/
 ---
 
 **Backend Status**: 🟢 PRODUCTION READY
-**Frontend Status**: 🔴 NOT STARTED
-**Overall Launch Readiness**: 50% (backend complete, frontend needed)
+**Web Frontend Status**: 🟢 BUILT (dashboard, trips, charging, battery health, insights, billing, i18n en/de/ru) — see `apps/web`
+**Mobile Status**: 🟡 FUNCTIONAL, PREMIUM REDESIGN SPEC'D — see [`MOBILE_PRODUCT_DESIGN.md`](./MOBILE_PRODUCT_DESIGN.md)
+**Overall Launch Readiness**: backend + web core complete; mobile foundation sprint (P0) is the current next step
 
-**Next Action**: Start frontend development using TESLA_QUICK_START.md as reference
+**Next Action**: Confirm P0 scope in `MOBILE_PRODUCT_DESIGN.md` and begin the mobile Foundation Sprint (Screen
+primitive, safe-area fix, i18n, tokens, tab renames — see that doc's Phase 6 backlog for exact scope)
+
+*(Note: the rest of this file below the corrected sections above still reflects pre-`apps/web`/`apps/mobile`
+planning and has not been fully rewritten — treat timelines, team-size estimates, and unchecked checklists past
+this point as historical, not current status.)*

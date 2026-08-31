@@ -8,7 +8,8 @@ import {
   Pressable,
 } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
-import { colors, radius, spacing } from '@/theme/tokens';
+import { useTranslation } from 'react-i18next';
+import { color, radius, space, type as tType } from '@/theme/tokens';
 import { useSecurityStore } from '@/store/useSecurityStore';
 
 interface Props {
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export function BiometricGate({ children }: Props) {
+  const { t } = useTranslation();
   const enabled = useSecurityStore((s) => s.biometricLockEnabled);
   const [locked, setLocked] = useState(false);
   const appState = useRef<AppStateStatus>(AppState.currentState);
@@ -33,12 +35,12 @@ export function BiometricGate({ children }: Props) {
       return;
     }
     const res = await LocalAuthentication.authenticateAsync({
-      promptMessage: 'Unlock EVPulse',
-      cancelLabel: 'Cancel',
+      promptMessage: t('biometric.unlockPrompt'),
+      cancelLabel: t('biometric.cancel'),
       disableDeviceFallback: false,
     });
     setLocked(!res.success);
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!enabled) {
@@ -62,10 +64,10 @@ export function BiometricGate({ children }: Props) {
   if (enabled && locked) {
     return (
       <View style={styles.overlay}>
-        <Text style={styles.title}>Locked</Text>
-        <Text style={styles.hint}>Confirm your identity to continue.</Text>
-        <Pressable style={styles.btn} onPress={() => void authenticate()}>
-          <Text style={styles.btnText}>Unlock</Text>
+        <Text style={styles.title}>{t('biometric.locked')}</Text>
+        <Text style={styles.hint}>{t('biometric.confirmIdentity')}</Text>
+        <Pressable style={styles.btn} onPress={() => void authenticate()} accessibilityRole="button">
+          <Text style={styles.btnText}>{t('biometric.unlock')}</Text>
         </Pressable>
       </View>
     );
@@ -77,33 +79,32 @@ export function BiometricGate({ children }: Props) {
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.background,
+    backgroundColor: color.bg.app,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: spacing.lg,
-    gap: spacing.sm,
+    padding: space.lg,
+    gap: space.sm,
     zIndex: 100,
   },
   title: {
-    color: colors.textPrimary,
-    fontSize: 22,
-    fontWeight: '700',
+    ...tType.h2,
+    color: color.text.primary,
   },
   hint: {
-    color: colors.textSecondary,
+    color: color.text.secondary,
     fontSize: 14,
     textAlign: 'center',
   },
   btn: {
-    marginTop: spacing.md,
-    backgroundColor: colors.primary,
-    paddingVertical: 14,
-    paddingHorizontal: 28,
+    marginTop: space.md,
+    backgroundColor: color.brand.teal400,
+    paddingVertical: space.buttonVertical,
+    paddingHorizontal: space.xl,
     borderRadius: radius.md,
   },
   btnText: {
-    color: '#fff',
+    ...tType.bodyStrong,
+    color: color.text.onTeal,
     fontSize: 16,
-    fontWeight: '600',
   },
 });
