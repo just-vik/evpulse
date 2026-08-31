@@ -526,8 +526,16 @@ export class TelemetryPipelineService {
     // so detectors can recover from a cold start without replaying all events.
     this.snapshotSvc?.take(vehicleId, nextState, 'pipeline').catch(() => {});
 
-    // Heartbeat key: lightweight "last seen" timestamp for freshness checks.
-    // TTL 700s (> 600s OFFLINE threshold) so it naturally expires if no data.
+    // Heartbeat key for telemetry-poll.cron.ts's REST-poll-fallback trigger
+    // ONLY — not part of user-facing freshness. Traced (P1.2.1 Blocker A):
+    // GET /vehicles/:id/status and the WS payload compute dataQuality/
+    // lastUpdate/dataFreshnessSec from DB rows and the pipeline's own
+    // sourceTimestamp respectively; neither reads this key. Its only reader
+    // (telemetry-poll.cron.ts forceFetchStalenessCheck) already falls back to
+    // querying the DB's latest telemetry point if this key is absent/expired,
+    // so its TTL has no bearing on the getDataQuality() thresholds and does
+    // not need to track them.
+    // TTL 700s — independent of the OFFLINE threshold, safe either way.
     await (this.redis as any).set(
       `vehicle:last_seen:${vehicleId}`,
       Date.now().toString(),

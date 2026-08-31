@@ -76,6 +76,16 @@ describe('TelemetryGateway.emitTelemetryUpdate freshness', () => {
     expect(lastPayload(emit).dataQuality).toBe('STALE');
   });
 
+  // P1.2.1: 700s is a normal parked-vehicle telemetry gap (observed range in
+  // production: 50s–6m20s) — this must land in STALE, not OFFLINE.
+  it('stale event (700s old source data, a normal parked-vehicle gap) → STALE', () => {
+    const { gateway, emit } = makeGatewayWithMockServer();
+
+    gateway.emitTelemetryUpdate('veh-1', {}, new Date(Date.now() - 700_000));
+
+    expect(lastPayload(emit).dataQuality).toBe('STALE');
+  });
+
   it('offline event (900s old source data) → OFFLINE', () => {
     const { gateway, emit } = makeGatewayWithMockServer();
 

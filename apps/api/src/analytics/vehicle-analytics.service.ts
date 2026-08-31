@@ -8,20 +8,30 @@ import { VampireDrainService } from '../telemetry/vampire-drain.service';
 /**
  * Data quality levels derived from telemetry freshness.
  *
- *   REALTIME  < 30s   — live data, all UI enabled
- *   DELAYED   30–120s — slightly behind, show badge, all controls still active
- *   STALE     120–600s — old data, hide realtime fields (speed/power), show last-known SOC
- *   OFFLINE   > 600s / null — no recent data, hide all realtime UI, disable all controls
+ *   REALTIME  < 60s    — live data, all UI enabled
+ *   DELAYED   60–299s  — slightly behind, calm badge only, no warning card, all controls still active
+ *   STALE     300–899s — old data; vehicle is very likely parked or asleep — this is
+ *                        EXPECTED, routine behavior, not a fault. Hide realtime fields
+ *                        (speed/power), show last-known SOC, calm sleep-aware explanation.
+ *   OFFLINE   >= 900s / null — no recent data. Still not a confirmed claim that the
+ *                        vehicle itself is unreachable — EVPulse does not wake it to
+ *                        check, so this can equally be a long, ordinary sleep.
  *
- * Thresholds are calibrated for Tesla's actual REST polling cadence (2–5 min normal,
- * 30s while driving), so DELAYED is not triggered by a single missed poll.
+ * P1.2.1 recalibration (was 30/120/600s): real production telemetry for a parked
+ * vehicle showed gaps of 50s–6m20s between points — routinely and by design (EVPulse
+ * does not poll aggressively while parked/asleep, to protect the Tesla Fleet API
+ * budget and avoid waking the car). The previous thresholds made STALE trigger on
+ * every single normal parked-state gap, which is exactly what the *previous* version
+ * of this comment said the thresholds were meant to avoid ("DELAYED is not triggered
+ * by a single missed poll") — the stated intent and the numbers didn't agree. These
+ * values are recalibrated against real observed cadence, not tightened arbitrarily.
  */
 export type DataQuality = 'REALTIME' | 'DELAYED' | 'STALE' | 'OFFLINE';
 
 export function getDataQuality(freshnessSec: number | null): DataQuality {
-  if (freshnessSec === null || freshnessSec >= 600) return 'OFFLINE';
-  if (freshnessSec < 30)  return 'REALTIME';
-  if (freshnessSec < 120) return 'DELAYED';
+  if (freshnessSec === null || freshnessSec >= 900) return 'OFFLINE';
+  if (freshnessSec < 60)  return 'REALTIME';
+  if (freshnessSec < 300) return 'DELAYED';
   return 'STALE';
 }
 
@@ -218,8 +228,10 @@ export class VehicleAnalyticsService {
       chargingState,
       drivingState:  null,
       locked:        dbState?.locked ?? null,
-      // Data freshness — frontend uses these to show quality-based UI
-      isOnline:        freshnessSec !== null && freshnessSec < 30,
+      // Data freshness — frontend uses these to show quality-based UI.
+      // isOnline mirrors dataQuality === 'REALTIME' (not a second, independent
+      // threshold) — was hardcoded to the pre-P1.2.1 30s constant.
+      isOnline:        dataQualityVal === 'REALTIME',
       dataFreshnessSec: freshnessSec,
       dataQuality:     dataQualityVal,
     };
