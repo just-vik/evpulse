@@ -381,7 +381,10 @@ export class TeslaFleetService {
           PackCurrent:          { interval_seconds: 10, minimum_delta: 2   }, // A
           // ── Battery ───────────────────────────────────────────────────────
           Soc:                  { interval_seconds: 30, minimum_delta: 1   }, // % — saves ~20x signals at rest
-          UsableBatteryLevel:   { interval_seconds: 30, minimum_delta: 1   }, // user-visible SOC (excludes buffer)
+          // UsableBatteryLevel removed 2026-08-31: Tesla rejects the whole config with
+          // 400 "Unknown field UsableBatteryLevel" — not a valid Fleet Telemetry field
+          // name. Found while re-registering config after the billing lockout wiped it
+          // (first real re-push since this field was added, so it was never exercised).
           BatteryLevel:         { interval_seconds: 60, minimum_delta: 1   },
           EstBatteryRange:      { interval_seconds: 60, minimum_delta: 1   }, // km estimated range
           RatedRange:           { interval_seconds: 60, minimum_delta: 1   },
