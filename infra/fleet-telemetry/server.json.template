@@ -1,0 +1,28 @@
+{
+  "host": "0.0.0.0",
+  "port": 443,
+  "log_level": "info",
+  "json_log_format": true,
+  "tls": {
+    "server_cert": "/certs/fullchain.pem",
+    "server_key":  "/certs/privkey.pem"
+  },
+  "namespace": "tesla_telemetry",
+  "reliable_ack": false,
+  "monitoring": {
+    "prometheus_metrics_port": 9090
+  },
+  "mqtt": {
+    "broker":    "tcp://tesla-mqtt:1883",
+    "client_id": "fleet-telemetry",
+    "username":  "telemetry_user",
+    "password":  "MCbvzZ8H",
+    "topic_base": "tesla/fleet",
+    "qos": 1
+  },
+  "records": {
+    "V":      ["mqtt"],
+    "alerts": ["mqtt"],
+    "errors": ["mqtt"]
+  }
+}

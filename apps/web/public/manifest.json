@@ -1,0 +1,23 @@
+{
+  "name": "EVPulse",
+  "short_name": "EVPulse",
+  "description": "Tesla analytics & monitoring",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#0a0d18",
+  "theme_color": "#a855f7",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/favicon-32.png", "sizes": "32x32", "type": "image/png", "purpose": "any" },
+    { "src": "/favicon.ico", "sizes": "48x48", "type": "image/x-icon", "purpose": "any" }
+  ],
+  "categories": ["utilities", "automotive"],
+  "shortcuts": [
+    { "name": "Dashboard", "url": "/dashboard", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Trips",     "url": "/trips",     "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Charging",  "url": "/charging",  "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

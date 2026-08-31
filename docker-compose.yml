@@ -1,0 +1,601 @@
+# ============================================================
+# EVPulse Tesla Platform — Production Docker Compose
+# Usage: docker compose up -d
+# Secrets: secrets/.env
+# ============================================================
+
+services:
+
+  # ──────────────────────────────────────────────
+  # INFRASTRUCTURE
+  # ──────────────────────────────────────────────
+
+  timescaledb:
+    build:
+      context: ./infra/timescaledb
+      dockerfile: Dockerfile
+    image: tesla-timescaledb-pgvector:latest
+    container_name: tesla-timescale
+    restart: unless-stopped
+    # cap_drop omitted: timescaledb entrypoint uses gosu (needs CAP_SETUID/SETGID)
+    security_opt: ["no-new-privileges:true"]
+
+    environment:
+      POSTGRES_USER: tesla
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is not set — see secrets/.env.example}
+      POSTGRES_DB: tesla
+
+    ports:
+      - "127.0.0.1:5432:5432"
+
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tesla -d tesla"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+    networks:
+      - backend-net
+
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+
+  redis:
+    image: redis:7.4.2
+    container_name: tesla-redis
+    restart: unless-stopped
+    # cap_drop omitted: redis entrypoint uses su-exec (needs CAP_SETUID/SETGID)
+    security_opt: ["no-new-privileges:true"]
+
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 384mb
+      --maxmemory-policy allkeys-lru
+
+    ports:
+      - "127.0.0.1:6379:6379"
+
+    volumes:
+      - redis_data:/data
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    networks:
+      - backend-net
+
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+
+  mqtt:
+    image: eclipse-mosquitto:2.0.21
+    container_name: tesla-mqtt
+    restart: unless-stopped
+    # cap_drop omitted: mosquitto may drop privileges from root at startup
+    security_opt: ["no-new-privileges:true"]
+
+    env_file:
+      - ./secrets/.env
+
+    volumes:
+      - ./infra/mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./infra/mqtt/passwd:/mosquitto/config/passwd:ro
+      - mqtt_data:/mosquitto/data
+      - mqtt_log:/mosquitto/log
+
+    expose:
+      - "1883"
+
+    healthcheck:
+      # $$VAR → $VAR at runtime (compose escaping): credentials come from env_file
+      test: ["CMD-SHELL", "mosquitto_sub -t '$$SYS/#' -C 1 -u $$MQTT_USER -P $$MQTT_PASSWORD -E || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    networks:
+      - backend-net
+
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+
+
+  # ──────────────────────────────────────────────
+  # TESLA FLEET TELEMETRY (streaming from vehicle)
+  # ──────────────────────────────────────────────
+  #
+  # Receives binary protobuf from the Tesla vehicle over TLS port 443,
+  # decodes it, and forwards JSON to evpulse-api /fleet/telemetry/ingest.
+  #
+  # Prerequisites (run scripts/setup-fleet-telemetry.sh first):
+  #   • secrets/fleet-telemetry-certs/fullchain.pem
+  #   • secrets/fleet-telemetry-certs/privkey.pem
+  #   • FLEET_INTERNAL_TOKEN set in secrets/.env
+  #   • FLEET_TELEMETRY_HOSTNAME=telemetry.evpulse.app in secrets/.env
+  #   • DNS: telemetry.evpulse.app → this server IP, Cloudflare proxy OFF (grey cloud)
+  #   • Vehicle configured: POST /api/v1/auth/tesla/configure-telemetry
+  #
+  fleet-telemetry:
+    build:
+      context: ./infra/fleet-telemetry
+      dockerfile: Dockerfile
+    image: evpulse-fleet-telemetry:latest
+    container_name: tesla-fleet-telemetry
+    restart: unless-stopped
+    cap_drop: ["ALL"]
+    cap_add: ["NET_BIND_SERVICE"]   # required: binds to port 443 (< 1024)
+    security_opt: ["no-new-privileges:true"]
+
+    environment:
+      FLEET_INTERNAL_TOKEN: ${FLEET_INTERNAL_TOKEN:-changeme}
+
+    volumes:
+      - ./infra/fleet-telemetry/server.json.template:/config/server.json.template:ro
+      - ./secrets/fleet-telemetry-certs:/certs:ro
+
+    ports:
+      - "0.0.0.0:443:443"      # Tesla vehicle connects here (TLS protobuf)
+      - "127.0.0.1:9090:9090"  # Prometheus metrics (internal only)
+
+    depends_on:
+      api:
+        condition: service_healthy
+      mqtt:
+        condition: service_healthy
+
+    networks:
+      - backend-net
+
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+    profiles:
+      - fleet-telemetry  # start with: docker compose --profile fleet-telemetry up -d
+
+
+  tesla-proxy:
+    image: tesla-vehicle-command-fixed:latest
+    container_name: tesla-vehicle-proxy
+    restart: unless-stopped
+    cap_drop: ["ALL"]
+    cap_add: ["DAC_READ_SEARCH"]   # fleet-key-pkcs8.pem is 600/vik; root inside container needs this to read it
+    security_opt: ["no-new-privileges:true"]
+
+    command:
+      - -tls-key
+      - /config/tls-key.pem
+      - -cert
+      - /config/tls-cert.pem
+      - -key-file
+      - /config/fleet-key-pkcs8.pem
+      - -host
+      - 0.0.0.0
+      - -port
+      - "4443"
+      - -verbose
+
+    volumes:
+      - ./secrets/vehicle-command:/config:ro
+
+    ports:
+      - "127.0.0.1:4443:4443"
+
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 4443 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    networks:
+      - backend-net
+
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+
+
+  # ──────────────────────────────────────────────
+  # MAP MATCHING (OSRM — Hessen road network)
+  # First start: downloads Hessen OSM (~323 MB) and preprocesses it (~3-5 min).
+  # Subsequent starts: instant boot from cached osrm_data volume.
+  # ──────────────────────────────────────────────
+
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:latest
+    container_name: tesla-osrm
+    restart: unless-stopped
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+
+    volumes:
+      - osrm_data:/data
+      - ./infra/osrm/entrypoint.sh:/entrypoint.sh:ro
+
+    ports:
+      - "127.0.0.1:5000:5000"
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null 'http://127.0.0.1:5000/nearest/v1/driving/8.4155,50.0586' 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 1800s  # allow up to 30 min for first-run Germany download + preprocessing
+
+    networks:
+      - backend-net
+
+    deploy:
+      resources:
+        limits:
+          memory: 768m   # Hessen MLD requires ~450 MB RSS
+
+
+  # ──────────────────────────────────────────────
+  # DATABASE MIGRATION (one-shot, runs once before api/api-worker start)
+  # Runs migrate.sh: prisma migrate deploy → timescale.sql. Exits after completion —
+  # not a long-running service. See apps/api/migrate.sh for details/ordering rationale.
+  # ──────────────────────────────────────────────
+
+  db-migrate:
+    image: tesla-platform-api:latest
+    container_name: evpulse-db-migrate
+    entrypoint: ["/bin/sh", "./migrate.sh"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+
+    env_file:
+      - ./secrets/.env
+
+    environment:
+      DB_HOST: timescaledb
+      DB_PORT: "5432"
+
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+
+    networks:
+      - backend-net
+
+    restart: "no"
+
+  # ──────────────────────────────────────────────
+  # BACKEND API
+  # ──────────────────────────────────────────────
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    image: tesla-platform-api:latest
+    container_name: evpulse-api
+    restart: unless-stopped
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+
+    env_file:
+      - ./secrets/.env
+
+    environment:
+      NODE_ENV: production
+      APP_ROLE: api
+      PORT: "3000"
+      APP_PORT: "3000"
+      HOST: "0.0.0.0"
+      DB_HOST: timescaledb
+      DB_PORT: "5432"
+      # DATABASE_URL (with credentials) comes from env_file: ./secrets/.env — not
+      # hardcoded here. See secrets/.env.example for the expected shape.
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      NODE_OPTIONS: "--max-old-space-size=1536 --max-semi-space-size=16"
+      FRONTEND_URL: "https://evpulse.app"
+      BACKEND_URL: "https://api.evpulse.app"
+      TESLA_AUDIENCE: "https://fleet-api.prd.eu.vn.cloud.tesla.com"
+      LOG_LEVEL: "info"
+      OSRM_URL: "http://tesla-osrm:5000"
+      TESLA_BUDGET_MONTHLY_EUR: "50"
+      TESLA_BUDGET_SOFT_PCT: "0.85"
+      TESLA_BUDGET_ESTIMATED_EUR_PER_REQUEST: "0.004"
+      # ── OpenTelemetry ──────────────────────────────────────────────────────
+      # Disable until a Tempo collector is running (avoids connection-refused noise).
+      # To enable: set OTEL_ENABLED=true and start the observability profile:
+      #   docker compose --profile observability up -d tempo grafana
+      OTEL_ENABLED: "true"
+      OTEL_SERVICE_NAME: "evpulse-api"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo:4318"
+      OTEL_METRICS_EXPORTER: "none"   # Tempo handles traces only; disable metrics push
+      OTEL_LOGS_EXPORTER: "none"
+
+    ports:
+      - "127.0.0.1:3000:3000"
+
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3000/health 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+    networks:
+      - backend-net
+      - frontend-net
+
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  api-worker:
+    image: tesla-platform-api:latest
+    container_name: evpulse-api-worker
+    restart: unless-stopped
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+
+    env_file:
+      - ./secrets/.env
+
+    environment:
+      NODE_ENV: production
+      APP_ROLE: worker
+      DB_HOST: timescaledb
+      DB_PORT: "5432"
+      # DATABASE_URL (with credentials) comes from env_file: ./secrets/.env — not
+      # hardcoded here. See secrets/.env.example for the expected shape.
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      NODE_OPTIONS: "--max-old-space-size=1536 --max-semi-space-size=16"
+      FRONTEND_URL: "https://evpulse.app"
+      BACKEND_URL: "https://api.evpulse.app"
+      TESLA_AUDIENCE: "https://fleet-api.prd.eu.vn.cloud.tesla.com"
+      LOG_LEVEL: "info"
+      OSRM_URL: "http://tesla-osrm:5000"
+      TESLA_BUDGET_MONTHLY_EUR: "50"
+      TESLA_BUDGET_SOFT_PCT: "0.85"
+      TESLA_BUDGET_ESTIMATED_EUR_PER_REQUEST: "0.004"
+      # ── OpenTelemetry (keep in sync with api service above) ────────────────
+      OTEL_ENABLED: "true"
+      OTEL_SERVICE_NAME: "evpulse-api"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo:4318"
+      OTEL_METRICS_EXPORTER: "none"
+      OTEL_LOGS_EXPORTER: "none"
+
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+    networks:
+      - backend-net
+
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+
+  # ──────────────────────────────────────────────
+  # DATABASE BACKUP (daily, 7-day rotation)
+  # Dumps tesla DB in pg_dump custom format to the db_backups volume.
+  # Logs are captured by Docker (docker logs evpulse-db-backup).
+  # Restore: pg_restore -h localhost -U tesla -d tesla /backups/tesla_<ts>.dump
+  # ──────────────────────────────────────────────
+
+  db-backup:
+    image: postgres:16-alpine
+    container_name: evpulse-db-backup
+    restart: unless-stopped
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+
+    env_file:
+      - ./secrets/.env
+
+    environment:
+      PGHOST: timescaledb
+      PGPORT: "5432"
+      PGUSER: tesla
+      PGDATABASE: tesla
+      BACKUP_KEEP_DAYS: "7"
+
+    volumes:
+      - db_backups:/backups
+      - ./scripts/backup-postgres.sh:/backup.sh:ro
+
+    # Run immediately on start, then every 24 h.
+    # backup.sh is already +x on the host — no chmod needed (ro mount).
+    command: >
+      sh -c "/backup.sh && while true; do sleep 86400 && /backup.sh; done"
+
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+
+    networks:
+      - backend-net
+
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+
+
+  # ──────────────────────────────────────────────
+  # FRONTEND
+  # ──────────────────────────────────────────────
+
+  frontend:
+    build:
+      context: .
+      dockerfile: ./apps/web/Dockerfile
+    image: tesla-platform-frontend:latest
+    container_name: evpulse-frontend
+    restart: unless-stopped
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    user: "1001:1001"   # nextjs user baked in Dockerfile; enforced here too
+    read_only: true
+    tmpfs: ["/tmp"]
+
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      NEXT_PUBLIC_API_URL: ""
+      NEXT_PUBLIC_WS_URL: "wss://api.evpulse.app"
+      INTERNAL_API_URL: "http://evpulse-api:3000"
+      COOKIE_DOMAIN: "evpulse.app"
+
+    ports:
+      - "127.0.0.1:3001:3000"
+
+    depends_on:
+      - api
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/ 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    networks:
+      - frontend-net
+
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+
+  # ──────────────────────────────────────────────
+  # OBSERVABILITY (Tempo + Grafana)
+  # Start with: docker compose --profile observability up -d
+  # Grafana UI: http://localhost:3002  (login: admin / see GF_SECURITY_ADMIN_PASSWORD in secrets/.env)
+  # ──────────────────────────────────────────────
+
+  tempo:
+    image: grafana/tempo:2.5.0
+    container_name: evpulse-tempo
+    restart: unless-stopped
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    # Proxmox LXC: if Tempo/runc fails with seccomp errors, add to security_opt:
+    #   "seccomp=unconfined"
+    # Or enable nesting=1 in the LXC config on the host instead.
+    command: ["-config.file=/etc/tempo.yml"]
+
+    volumes:
+      - ./infra/tempo/tempo.yml:/etc/tempo.yml:ro
+      - tempo_data:/var/tempo
+
+    ports:
+      - "127.0.0.1:4318:4318"   # OTLP HTTP (used by api/api-worker)
+      - "127.0.0.1:4317:4317"   # OTLP gRPC
+      - "127.0.0.1:3200:3200"   # Tempo HTTP API (queried by Grafana)
+
+    networks:
+      - backend-net
+
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+    profiles:
+      - observability
+
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: evpulse-grafana
+    restart: unless-stopped
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+
+    env_file:
+      - ./secrets/.env
+
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+
+    ports:
+      - "127.0.0.1:3002:3000"
+
+    depends_on:
+      - tempo
+
+    networks:
+      - backend-net
+
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+    profiles:
+      - observability
+
+
+# ──────────────────────────────────────────────
+# VOLUMES
+# ──────────────────────────────────────────────
+
+volumes:
+  timescale_data:
+  redis_data:
+  mqtt_data:
+  mqtt_log:
+  db_backups:
+  osrm_data:
+  tempo_data:
+  grafana_data:
+
+
+# ──────────────────────────────────────────────
+# NETWORKS
+# frontend-net: frontend ↔ api only (Next.js SSR calls INTERNAL_API_URL)
+# backend-net:  all internal services; frontend container has no direct DB/cache access
+# ──────────────────────────────────────────────
+
+networks:
+  backend-net:
+    name: evpulse_backend
+    driver: bridge
+  frontend-net:
+    name: evpulse_frontend
+    driver: bridge

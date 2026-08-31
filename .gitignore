@@ -1,0 +1,79 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# Environment — every dotenv variant, at any depth (apps/web, apps/mobile, ...).
+# .env.example files are safe onboarding templates and are explicitly re-included.
+.env
+.env.*
+!.env.example
+
+# Secrets — private keys, TLS certs, service account files. Whole directory, not just
+# secrets/.env — secrets/ also holds fleet-telemetry-certs/*.pem and vehicle-command/*.pem.
+# `secrets/*` (not bare `secrets/`) so the negation below can actually re-include the
+# template — a bare directory-name exclusion prunes traversal entirely and no `!pattern`
+# after it can ever reach files inside, even if it looks like it should.
+secrets/*
+!secrets/.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Build outputs
+dist/
+build/
+.next/
+.turbo/
+.expo/
+*.tsbuildinfo
+
+# Database
+.prisma/
+
+# DB dumps / backups — never committed, even schema-only (unknown provenance/content).
+# Prisma/SQL migration files are source-controlled schema history, not dumps — re-included.
+*.dump
+*.sql.gz
+*.sql
+!**/migrations/**/*.sql
+!**/migrations_manual/**/*.sql
+
+# OS
+Thumbs.db
+
+# Testing
+coverage/
+.nyc_output/
+
+# Shell / tool history (contain credentials from dev sessions)
+.bash_history
+.psql_history
+.node_repl_history
+.wget-hsts
+
+# Claude Code local settings (contain PGPASSWORD + DB credentials in allowed commands)
+.claude/settings.local.json
+
+# Mosquitto MQTT credentials (root/container-owned, mode 600 — hashed passwords)
+infra/mqtt/passwd
+
+# Repo-root .bashrc — contains a live OPENAI_API_KEY in plaintext (found 2026-08-19,
+# never committed). Do not remove this line without first confirming the file no
+# longer holds a real secret.
+/.bashrc

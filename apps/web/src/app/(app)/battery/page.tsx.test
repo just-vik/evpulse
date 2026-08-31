@@ -1,0 +1,293 @@
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
+
+import { Page } from '@/components/layout';
+import { Battery, TrendingDown, Zap, Thermometer, AlertTriangle, CheckCircle, Loader } from 'lucide-react';
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from 'recharts';
+import { useAuthStore } from '@/stores/authStore';
+import { apiClient } from '@/lib/api';
+
+const CHART_TOOLTIP_STYLE = {
+  contentStyle: { backgroundColor: '#1e293b', border: '1px solid #475569', borderRadius: '8px' },
+};
+
+interface BatteryHealthData {
+  vehicleId: string;
+  sohPercent: number;
+  estimatedCapacityKwh: number;
+  nominalCapacityKwh: number;
+  degradationPercent: number;
+  method: string;
+  confidenceScore: number;
+  tripSoh?: number;
+  chargingSoh?: number;
+  avgBatteryTempC?: number;
+  updatedAt?: string;
+  vehicle?: {
+    model: string;
+    year?: number;
+    spec?: { batteryNominalKwh: number; batteryUsableKwh: number; rangeWltp?: number };
+  };
+}
+
+interface DegradationTrendData {
+  samples: number;
+  degradationPerMonth: number;
+  projectedSoh1Year: number;
+  projectedSoh5Year: number;
+  data: { timestamp: string; sohPercent: number; degradation: number; method: string }[];
+}
+
+function StatCard({
+  icon, label, value, unit, status,
+}: {
+  icon: React.ReactNode; label: string; value: string | number; unit?: string;
+  status?: 'good' | 'warning' | 'critical';
+}) {
+  const bgMap = { good: 'bg-green-500/10 border-green-500/20', warning: 'bg-orange-500/10 border-orange-500/20', critical: 'bg-red-500/10 border-red-500/20' };
+  const iconMap = { good: 'text-green-400', warning: 'text-orange-400', critical: 'text-red-400' };
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`p-4 rounded-lg border flex items-start gap-3 ${status ? bgMap[status] : 'bg-slate-800/50 border-slate-700/50'}`}
+    >
+      <div className={`w-10 h-10 rounded-lg bg-slate-700 flex items-center justify-center ${status ? iconMap[status] : 'text-blue-400'}`}>
+        {icon}
+      </div>
+      <div>
+        <p className="text-xs text-slate-400 uppercase tracking-wider font-semibold">{label}</p>
+        <p className="text-lg font-bold text-white mt-1">
+          {value}{unit && <span className="text-sm ml-1">{unit}</span>}
+        </p>
+      </div>
+    </motion.div>
+  );
+}
+
+function getSohStatus(soh: number): 'good' | 'warning' | 'critical' {
+  if (soh >= 90) return 'good';
+  if (soh >= 75) return 'warning';
+  return 'critical';
+}
+
+export default function BatteryPage() {
+  const { accessToken } = useAuthStore();
+  
+  const [vehicleId, setVehicleId] = useState<string | null>(null);
+  const [health, setHealth] = useState<BatteryHealthData | null>(null);
+  const [trend, setTrend] = useState<DegradationTrendData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    apiClient.getVehicles(accessToken)
+      .then(async (vehicles: any[]) => {
+        if (!vehicles.length) { setLoading(false); return; }
+        const vid = vehicles[0].id;
+        setVehicleId(vid);
+        try {
+          const [h, t] = await Promise.all([
+            apiClient.getBatteryHealth(vid, accessToken).catch(() => null),
+            // degradation/trend не обёрнут в apiClient — вызываем напрямую
+            fetch(`/api/v1/battery/${vid}/degradation?days=180`, {
+              headers: { Authorization: `Bearer ${accessToken}` },
+            }).then(r => (r.ok ? r.json() : null)).catch(() => null),
+          ]);
+          if (h) setHealth(h as BatteryHealthData);
+          if (t) setTrend(t as DegradationTrendData);
+        } catch { /* no battery data yet */ }
+        setLoading(false);
+      })
+      .catch((err: Error) => { setError(err.message); setLoading(false); });
+  }, [accessToken]);
+
+  const sohStatus = health ? getSohStatus(health.sohPercent) : 'good';
+
+  const chartData = trend?.data?.map((p) => ({
+    date: new Date(p.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    soh: p.sohPercent,
+    degradation: p.degradation,
+  })) ?? [];
+
+  // Add projected points if we have trend data
+  if (trend && chartData.length > 0) {
+    const today = new Date();
+    chartData.push({
+      date: new Date(today.setFullYear(today.getFullYear() + 1)).toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+      soh: trend.projectedSoh1Year,
+      degradation: 100 - trend.projectedSoh1Year,
+    });
+  }
+
+  return (
+    <Page title={'Battery Analytics'} subtitle={'State of Health and degradation analysis'}>
+      {loading ? (
+        <div className="flex items-center justify-center py-24">
+          <Loader size={32} className="animate-spin text-blue-400" />
+        </div>
+      ) : error ? (
+        <div className="flex items-center gap-3 p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400">
+          <AlertTriangle size={20} />
+          <p>{error}</p>
+        </div>
+      ) : !health ? (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-24">
+          <div className="w-16 h-16 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mx-auto mb-4">
+            <Battery size={28} className="text-blue-400" />
+          </div>
+          <h3 className="text-lg font-semibold text-white mb-2">No battery data yet</h3>
+          <p className="text-slate-400 text-sm">Battery SOH is calculated automatically after trips and charging sessions are recorded.</p>
+        </motion.div>
+      ) : (
+        <>
+          {/* Alert banner */}
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`p-4 rounded-lg flex items-start gap-3 mb-6 ${
+              sohStatus === 'good'
+                ? 'bg-green-500/10 border border-green-500/20'
+                : sohStatus === 'warning'
+                  ? 'bg-amber-500/10 border border-amber-500/20'
+                  : 'bg-red-500/10 border border-red-500/20'
+            }`}
+          >
+            {sohStatus === 'good'
+              ? <CheckCircle size={20} className="text-green-400 flex-shrink-0 mt-0.5" />
+              : <AlertTriangle size={20} className="text-amber-400 flex-shrink-0 mt-0.5" />}
+            <div>
+              <p className={`font-semibold ${sohStatus === 'good' ? 'text-green-100' : sohStatus === 'warning' ? 'text-amber-100' : 'text-red-100'}`}>
+                Battery Health {sohStatus === 'good' ? 'Optimal' : sohStatus === 'warning' ? 'Moderate Degradation' : 'High Degradation'}
+              </p>
+              <p className="text-sm text-slate-300 mt-1">
+                Current SOH: {health.sohPercent.toFixed(1)}% · Estimated capacity: {health.estimatedCapacityKwh.toFixed(1)} kWh
+                {health.confidenceScore > 0 && ` · Confidence: ${(health.confidenceScore * 100).toFixed(0)}%`}
+                {health.method !== 'none' && ` · Method: ${health.method}`}
+              </p>
+            </div>
+          </motion.div>
+
+          {/* KPI Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <StatCard icon={<Battery size={20} />} label="Battery Health" value={health.sohPercent.toFixed(1)} unit="%" status={sohStatus} />
+            <StatCard icon={<Zap size={20} />} label="Estimated Capacity" value={health.estimatedCapacityKwh.toFixed(1)} unit="kWh" status={sohStatus} />
+            <StatCard icon={<TrendingDown size={20} />} label="Degradation" value={health.degradationPercent.toFixed(1)} unit="%" status={health.degradationPercent < 10 ? 'good' : health.degradationPercent < 20 ? 'warning' : 'critical'} />
+            <StatCard icon={<Thermometer size={20} />} label="Avg Battery Temp" value={health.avgBatteryTempC !== null && health.avgBatteryTempC !== undefined ? health.avgBatteryTempC.toFixed(1) : '—'} unit={health.avgBatteryTempC !== null ? '°C' : ''} />
+          </div>
+
+          {/* SOH Trend Chart */}
+          {chartData.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-6 rounded-lg bg-slate-800/50 border border-slate-700/50 backdrop-blur-sm mb-6"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-white">SOH Trend + 1-Year Projection</h3>
+                {trend && (
+                  <span className="text-xs text-slate-400 bg-slate-700 px-2 py-1 rounded-full">
+                    {trend.samples} measurements
+                  </span>
+                )}
+              </div>
+              <ResponsiveContainer width="100%" height={260}>
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="colorSoh" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                  <XAxis dataKey="date" stroke="#94a3b8" tick={{ fontSize: 11 }} />
+                  <YAxis stroke="#94a3b8" domain={[50, 105]} />
+                  <Tooltip {...CHART_TOOLTIP_STYLE} />
+                  <Area type="monotone" dataKey="soh" name="SOH %" stroke="#10b981" fillOpacity={1} fill="url(#colorSoh)" dot={false} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </motion.div>
+          )}
+
+          {/* Method breakdown + Projections */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-5 rounded-lg bg-slate-800/50 border border-slate-700/50"
+            >
+              <h3 className="text-base font-semibold text-white mb-4">SOH by Method</h3>
+              <div className="space-y-3">
+                {[
+                  { label: 'Trip-based (Consumption)', value: health.tripSoh, color: 'bg-blue-500' },
+                  { label: 'Charging-based (Energy)', value: health.chargingSoh, color: 'bg-green-500' },
+                  { label: 'Weighted Result', value: health.sohPercent, color: 'bg-purple-500' },
+                ].map((item) => (
+                  <div key={item.label}>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-slate-400">{item.label}</span>
+                      <span className="text-white font-medium">
+                        {item.value != null ? `${item.value.toFixed(1)}%` : 'N/A'}
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full bg-slate-700">
+                      <div
+                        className={`h-full rounded-full ${item.color}`}
+                        style={{ width: `${item.value ?? 0}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-5 rounded-lg bg-slate-800/50 border border-slate-700/50"
+            >
+              <h3 className="text-base font-semibold text-white mb-4">Degradation Forecast</h3>
+              <div className="space-y-4">
+                {[
+                  { label: 'Current SOH', value: `${health.sohPercent.toFixed(1)}%`, color: 'text-green-400' },
+                  { label: 'In 1 Year', value: trend ? `${trend.projectedSoh1Year.toFixed(1)}%` : '—', color: 'text-blue-400' },
+                  { label: 'In 5 Years', value: trend ? `${trend.projectedSoh5Year.toFixed(1)}%` : '—', color: 'text-orange-400' },
+                  { label: 'Monthly Degradation', value: trend ? `${trend.degradationPerMonth.toFixed(3)}%/mo` : '—', color: 'text-slate-300' },
+                ].map((item) => (
+                  <div key={item.label} className="flex items-center justify-between">
+                    <span className="text-sm text-slate-400">{item.label}</span>
+                    <span className={`font-semibold text-sm ${item.color}`}>{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </div>
+
+          {/* Tips */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[
+              { color: 'blue', title: '💡 Charging', text: 'Avoid frequent full charges. Keep SOC between 20–80% for longer battery life.' },
+              { color: 'green', title: '💡 Temperature', text: 'Keep your vehicle cool. High temperatures accelerate battery degradation.' },
+              { color: 'orange', title: '💡 Storage', text: 'Store at 50% SOC if leaving unused for extended periods.' },
+            ].map((tip) => (
+              <motion.div
+                key={tip.title}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`p-4 rounded-lg bg-${tip.color}-500/10 border border-${tip.color}-500/20`}
+              >
+                <h4 className={`font-semibold text-${tip.color}-200 mb-2`}>{tip.title}</h4>
+                <p className={`text-sm text-${tip.color}-100/80`}>{tip.text}</p>
+              </motion.div>
+            ))}
+          </div>
+        </>
+      )}
+    </Page>
+  );
+}

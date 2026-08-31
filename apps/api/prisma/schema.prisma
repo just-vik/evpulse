@@ -1,0 +1,1089 @@
+/// Production Tesla Analytics Database Schema (~30+ tables)
+/// Event-driven architecture optimized for high-scale telemetry ingestion
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// USERS & AUTHENTICATION (~5 tables)
+// ============================================================================
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  refreshToken String?   // bcrypt-hashed refresh token (optional)
+  firstName String?
+  lastName  String?
+  role      String   @default("user") // user, admin, premium
+  status    String   @default("active") // active, suspended, deleted
+  timezone  String   @default("UTC")
+  /// Tenant identifier — 'selfhosted' for single-tenant deployments, orgId for SaaS.
+  tenantId  String   @default("selfhosted")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stripeCustomerId   String?  @unique
+
+  // Relations
+  vehicles           Vehicle[]
+  teslaAccounts      TeslaAccount[]
+  userSettings       UserSettings?
+  userSessions       UserSession[]
+  notificationRules        NotificationRule[]
+  notifications            Notification[]
+  notificationSettings     UserNotificationSettings?
+  webPushSubscriptions     WebPushSubscription[]
+  automations              Automation[]
+  subscriptions      Subscription?
+  entitlements       UserEntitlements?
+  subscriptionEvents SubscriptionEvent[]
+  invoices           Invoice[]
+  consents           UserConsent[]
+  commandPresets     CommandPreset[]
+  commandHistory     CommandHistory[]
+  loginEvents        LoginEvent[]
+  auditEvents        AuditEvent[]
+
+  @@index([email, status])
+  @@index([tenantId])
+  @@map("users")
+}
+
+/// GDPR audit trail — one row per explicit user consent event.
+/// Required by Apple App Store (2023+) and GDPR Art.7.
+model UserConsent {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  policyVersion String           // e.g. "1.0", "1.1"
+  consentedAt DateTime @default(now())
+  ipAddress   String?            // stored for audit; mask last octet for GDPR compliance
+  userAgent   String?
+  channel     String   @default("app") // "app" | "web" | "api"
+
+  @@index([userId])
+  @@map("user_consents")
+}
+
+model UserSettings {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  units               String   @default("metric") // metric, imperial
+  language            String   @default("en")
+  theme               String   @default("dark") // light, dark, auto
+  notificationsEnabled Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
+}
+
+model UserSession {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  ip        String?
+  device    String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("user_sessions")
+}
+
+// ============================================================================
+// VEHICLE SPECS (~1 table) - Tesla model reference data
+// ============================================================================
+
+model VehicleSpec {
+  id                  String   @id @default(cuid())
+  modelCode           String   // model3_lr_awd, modely_lr_rwd, models_plaid, etc.
+  displayName         String   // "Model 3 Long Range AWD"
+  year                Int
+  region              String   // EU, US, CN
+  batteryNominalKwh   Float    // Nominal pack capacity (kWh)
+  batteryUsableKwh    Float    // Usable capacity (kWh)
+  rangeWltp           Float?   // WLTP range (km)
+  rangeEpa            Float?   // EPA range (miles)
+  rangeNedcKm         Float?   // NEDC range (km)
+  peakChargingKw      Float?   // Max DC charging power (kW)
+  /// Battery cell chemistry: 'NMC' (charge to 80-90% daily) or 'LFP' (100% daily is fine)
+  cellChemistry       String?  // 'NMC' | 'LFP'
+  /// Generation / refresh name: 'Juniper' (Model Y 2025+), 'Highland' (Model 3 2024+), null for legacy
+  generation          String?
+  createdAt           DateTime @default(now())
+
+  vehicles Vehicle[]
+
+  @@unique([modelCode, year, region])
+  @@map("vehicle_specs")
+}
+
+// ============================================================================
+// VEHICLES (~5 tables)
+// ============================================================================
+
+model Vehicle {
+  id                     String   @id @default(cuid())
+  userId                 String
+  vin                    String   @unique
+  teslaId                String?  @unique
+  model                  String
+  trim                   String?
+  year                   Int?
+  vehicleSpecId          String?
+  /// Tenant identifier — 'selfhosted' for single-tenant deployments, orgId for SaaS.
+  tenantId               String   @default("selfhosted")
+  batteryCapacityNominal Float    @default(75.0) // kWh
+  batteryCapacityUsable  Float    @default(72.0) // kWh
+  /// Real-world capacity detected from BMS / analytics (kWh)
+  batteryCapacityDetected Float?
+  /// Legacy effective baseline alias (HIGH ?? MEDIUM). Kept for backward compat.
+  batteryCapacityBaseline Float?
+  batteryBaselineLockedAt DateTime?
+  /// HIGH-confidence baseline: locked from ≥10 sessions where endSoc≥90% AND socDelta≥30%.
+  /// Most accurate — BMS has fully recalibrated at top of charge.
+  batteryBaselineHighKwh       Float?
+  batteryBaselineHighLockedAt  DateTime?
+  /// MEDIUM-confidence baseline: locked from ≥15 sessions where endSoc 70–90% AND socDelta≥30%.
+  /// Less accurate (extrapolated), used as fallback when no HIGH sessions available yet.
+  batteryBaselineMediumKwh     Float?
+  batteryBaselineMediumLockedAt DateTime?
+  /// Cumulative full-cycle equivalents from driving: Σ(energyUsedKwh / baselineKwh).
+  batteryCyclesTotal      Float?
+  /// Cumulative full-cycle equivalents from charging: Σ(energyAddedKwh × eff / baselineKwh).
+  batteryCycleChargeTotal Float?
+  /// Cumulative km with FSD/Autopilot active (from fleet telemetry SelfDrivingMilesSinceReset × 1.60934).
+  selfDrivingKmTotal      Float?
+  /// Total km since last factory reset (from fleet telemetry MilesSinceReset × 1.60934).
+  odometerKmSinceReset    Float?
+  status                 String   @default("active") // active, inactive, deleted
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  // Relations
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicleSpec         VehicleSpec?         @relation(fields: [vehicleSpecId], references: [id])
+  settings            VehicleSettings?
+  teslaAccountLink    TeslaVehicleLink?
+  vehicleState        VehicleState?
+  telemetryPoints     TelemetryPoint[]
+  telemetryEvents     TelemetryEvent[]
+  vehicleLocations    VehicleLocation[]
+  trips               Trip[]
+  chargingSessions    ChargingSession[]
+  vampireDrainLogs    VampireDrainLog[]
+  stateSnapshots      VehicleStateSnapshot[]
+  batteryHealth       BatteryHealth[]
+  chargeCycles        ChargeCycle[]
+  dailyEnergy         DailyEnergy[]
+  monthlyEnergy       MonthlyEnergy[]
+  automations         Automation[]
+  commandPresets      CommandPreset[]
+  commandHistory      CommandHistory[]
+
+  @@index([userId, status])
+  @@index([vin])
+  @@index([tenantId])
+  @@map("vehicles")
+}
+
+model VehicleSettings {
+  id                  String   @id @default(cuid())
+  vehicleId           String   @unique
+  displayName         String?
+  homeLatitude        Float?
+  homeLongitude       Float?
+
+  // Legacy single charging cost (used as home rate by analytics)
+  chargingCost        Float    @default(0.0)
+
+  // Per-type tariffs (€/kWh)
+  homeChargingRate         Float    @default(0.35)
+  superchargerRate         Float    @default(0.49)  // standard (peak) Supercharger rate
+  superchargerOffPeakRate  Float?                    // off-peak rate (null = no time-of-day pricing)
+  superchargerPeakStart    Int      @default(8)      // local hour when peak begins (inclusive)
+  superchargerPeakEnd      Int      @default(22)     // local hour when peak ends (exclusive)
+  thirdPartyRate           Float    @default(0.45)
+
+  // Charging / alert thresholds (%)
+  defaultChargeLimit  Int      @default(80)
+  lowBatteryThreshold Int      @default(20)
+
+  timezone            String   @default("UTC")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@map("vehicle_settings")
+}
+
+model VehicleState {
+  id              String   @id @default(cuid())
+  vehicleId       String   @unique
+  timestamp       DateTime
+  state           String   @default("offline") // online, offline, sleep
+  chargingState   String? // charging, stopped, not_charging
+  locked          Boolean  @default(true)
+  odometer        Float?
+  lastUpdate      DateTime @updatedAt
+  /// Optimistic-lock counter — incremented on every write.
+  /// Writers must pass the current version; stale-write is discarded.
+  version         Int      @default(0)
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId])
+  @@map("vehicle_states")
+}
+
+/// Periodic snapshots of the full vehicle state for time-travel debugging
+/// and fast recovery after a service restart (Redis cold start).
+///
+/// Written:
+///   • on every significant state transition (IDLE→DRIVING, DRIVING→CHARGING…)
+///   • every 5 minutes while a trip or charging session is active (heartbeat)
+///   • on service startup (cold-start bootstrap)
+///
+/// Retention: 30 days (purge cron removes older rows to keep the table small).
+model VehicleStateSnapshot {
+  id          String   @id @default(cuid())
+  vehicleId   String
+  snapshotAt  DateTime
+  /// What triggered this snapshot: 'transition' | 'heartbeat' | 'cold_start' | 'pipeline'
+  trigger     String
+  /// Full state payload: speed, soc, power, lat, lng, vehicleState, charging_state, …
+  state       Json
+
+  vehicle     Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, snapshotAt])
+  @@map("vehicle_state_snapshots")
+}
+
+// ============================================================================
+// TESLA INTEGRATION (~2 tables)
+// ============================================================================
+
+model TeslaAccount {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  email                 String
+  accessTokenEncrypted  String   @db.Text
+  refreshTokenEncrypted String   @db.Text
+  expiresAt             DateTime
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Relations
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicleLinks TeslaVehicleLink[]
+
+  @@map("tesla_accounts")
+}
+
+model TeslaVehicleLink {
+  id              String   @id @default(cuid())
+  vehicleId       String   @unique
+  teslaAccountId  String
+  teslaVehicleId  String   @unique
+  createdAt       DateTime @default(now())
+
+  vehicle     Vehicle     @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  teslaAccount TeslaAccount @relation(fields: [teslaAccountId], references: [id], onDelete: Cascade)
+
+  @@index([teslaAccountId])
+  @@map("tesla_vehicle_links")
+}
+
+// ============================================================================
+// TELEMETRY - RAW TIME SERIES (~4 tables)
+// ============================================================================
+
+model TelemetryPoint {
+  id              String   @id @default(cuid())
+  vehicleId       String
+  timestamp       DateTime
+  
+  // Battery metrics
+  soc             Float?   // State of Charge (%)
+  batteryRangeKm  Float?   // Estimated remaining range (km)
+  batteryTemp     Float?   // Battery temperature (°C)
+  
+  // Motion
+  speed           Float?   // Current speed (km/h)
+  power           Float?   // Current power (kW)
+  current         Float?   // Current (A)
+  voltage         Float?   // Voltage (V)
+  
+  // Location
+  latitude        Float?
+  longitude       Float?
+  elevationM      Float?   // Elevation above sea level (m), optional
+  
+  // Climate
+  outsideTemp     Float?   // Outside temperature (°C)
+  insideTemp      Float?   // Inside temperature (°C)
+  
+  // Vehicle state
+  odometer        Float?   // Total distance (km)
+  heading         Float?   // Heading direction (°)
+  shiftState      String?  // Tesla shift_state: 'P'|'D'|'R'|'N' — stored for accurate backfill/rebuild
+
+  // Charging fields — stored from fleet telemetry / REST API for use by
+  // charging detector, watchdog, and post-processor without raw payload joins.
+  chargingState      String?  // Tesla charging_state: 'Charging'|'Complete'|'Disconnected'|'NoPower'|'Stopped'
+  chargeEnergyAdded  Float?   // Cumulative kWh added this session (charger-side, from Tesla BMS)
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, timestamp])
+  @@index([timestamp])
+  @@index([vehicleId, chargingState])
+  @@unique([vehicleId, timestamp], name: "vehicleId_timestamp")
+  @@map("telemetry_points")
+}
+
+model TelemetryEvent {
+  id          String   @id @default(cuid())
+  vehicleId   String
+  timestamp   DateTime @default(now())
+  eventType   String   // charge_started, charge_stopped, vehicle_sleep, vehicle_wake
+  payloadJson Json?
+  
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, timestamp])
+  @@index([eventType])
+  @@map("telemetry_events")
+}
+
+model VehicleLocation {
+  id          String   @id @default(cuid())
+  vehicleId   String
+  timestamp   DateTime
+  latitude    Float
+  longitude   Float
+  speed       Float?
+  
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, timestamp])
+  @@map("vehicle_locations")
+}
+
+// ============================================================================
+// TRIPS (~3 tables)
+// ============================================================================
+
+model Trip {
+  id              String   @id @default(cuid())
+  vehicleId       String
+  startTime       DateTime
+  endTime         DateTime?
+  
+  // Location (text addresses)
+  startLocation   String?
+  endLocation     String?
+
+  // GPS coordinates (for map rendering without loading all points)
+  startLat        Float?   @map("start_lat")
+  startLon        Float?   @map("start_lon")
+  endLat          Float?   @map("end_lat")
+  endLon          Float?   @map("end_lon")
+
+  // Compressed GPS track (Google Encoded Polyline) for map overview
+  polyline        String?
+
+  // Energy
+  startSoc        Float
+  endSoc          Float?
+
+  // Metrics
+  distanceKm      Float?
+  energyUsedKwh   Float?
+  efficiencyWhkm  Float?
+
+  // Data quality (0-100)
+  qualityScore    Int?     @map("quality_score")
+
+  // Trip analytics
+  drivingScore    Int?     @map("driving_score")    // 0–100 composite (efficiency + smoothness + stops)
+  costTotal       Float?   @map("cost_total")        // € cost of energy used
+  anomalyFlags    String?  @map("anomaly_flags")     // JSON array: ['HIGH_EFFICIENCY', 'GPS_JUMP']
+
+  // Data reliability
+  reliability     String?  @map("reliability")       // HIGH | MEDIUM | LOW
+  repairReason    String?  @map("repair_reason")     // legacy: pipe-delimited tags (kept for compat)
+  /// Structured repair/audit log. JSONB array of {tag, source, ts}.
+  /// GIN-indexed — query with: WHERE repair_tags @> '[{"tag":"gap_recovery"}]'
+  repairTags      Json?    @map("repair_tags")
+
+  // Map matching
+  routeType       String?  @map("route_type")        // 'matched' | 'estimated'
+  mapMatchedAt    DateTime? @map("map_matched_at")
+
+  /// P1 two-phase finalize: delayed reconciliation (2–10 min after phase-1 draft)
+  reconcileAt     DateTime? @map("reconcile_at")
+
+  /// Tenant identifier — 'selfhosted' for single-tenant deployments, orgId for SaaS.
+  tenantId        String    @default("selfhosted")
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  vehicle Vehicle    @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  points  TripPoint[]
+  stats   TripStats?
+
+  @@index([vehicleId, startTime])
+  @@index([startTime])
+  @@index([reconcileAt])
+  @@map("trips")
+}
+
+model TripPoint {
+  id           String   @id @default(cuid())
+  tripId       String
+  timestamp    DateTime
+  latitude     Float?
+  longitude    Float?
+  smoothLat    Float?   @map("smooth_lat")
+  smoothLng    Float?   @map("smooth_lng")
+  speed        Float?
+  power        Float?
+  soc          Float?
+  elevationM   Float?
+  interpolated Boolean  @default(false)
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId])
+  @@map("trip_points")
+}
+
+model TripStats {
+  id               String   @id @default(cuid())
+  tripId           String   @unique
+  avgSpeed         Float?
+  maxSpeed         Float?
+  regenEnergyKwh   Float?
+  elevationGain    Float?
+  drivingStyle     String?  // aggressive, normal, eco
+  /// Fraction of trip time spent at near‑zero speed (0–5 km/h), proxy for traffic/stop‑and‑go
+  trafficStopRatio Float?
+  
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@map("trip_stats")
+}
+
+// ============================================================================
+// CHARGING (~2 tables)
+// ============================================================================
+
+model ChargingSession {
+  id              String   @id @default(cuid())
+  vehicleId       String
+  startTime       DateTime
+  endTime         DateTime?
+  
+  startSoc        Float
+  endSoc          Float?
+  
+  energyAddedKwh      Float?
+  maxPowerKw          Float?
+  /// Charging efficiency = energyAddedKwh / (ΔSOC/100 × detectedCapacity).
+  /// < 1.0 means losses (heat). Typical: AC home 0.90–0.96, DC fast 0.85–0.93.
+  chargingEfficiency  Float?
+
+  chargerType     String?  // supercharger, dc_fast, ac_fast, ac_home, ac_slow
+  location        String?
+  startLat        Float?   // GPS at session start — used for Supercharger pricing lookup
+  startLng        Float?
+  cost            Float?   // legacy USD field
+
+  // Cost calculation
+  /// Tenant identifier — 'selfhosted' for single-tenant deployments, orgId for SaaS.
+  tenantId        String   @default("selfhosted")
+
+  costTotal       Float?   // calculated total cost (€)
+  costPerKwh      Float?   // €/kWh used for calculation
+  costSource      String?  // 'supercharger' | 'tariff' | 'manual'
+  manualCost      Float?   // user-overridden cost
+  currency        String?  @default("EUR")
+
+  /// Tesla billing API retry pipeline (exponential backoff until tesla_api or scope_missing)
+  billingSyncAttempts Int      @default(0) @map("billing_sync_attempts")
+  billingNextSyncAt   DateTime?  @map("billing_next_sync_at")
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  vehicle Vehicle          @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  points  ChargingPoint[]
+
+  @@index([vehicleId, startTime])
+  @@index([startTime])
+  @@index([billingNextSyncAt])
+  @@map("charging_sessions")
+}
+
+model ChargingPoint {
+  id          String   @id @default(cuid())
+  sessionId   String
+  timestamp   DateTime
+  powerKw     Float
+  current     Float?
+  voltage     Float?
+  soc         Float?
+
+  session ChargingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@map("charging_points")
+}
+
+// ============================================================================
+// SUPERCHARGER LOCATIONS (pricing cache)
+// ============================================================================
+
+model SuperchargerLocation {
+  id                String   @id @default(cuid())
+  stationId         String   @unique
+  name              String
+  lat               Float
+  lng               Float
+  ratePerKwh        Float?   // base price €/kWh
+  peakRatePerKwh    Float?   // on-peak rate (if time-of-use tariff)
+  offPeakRatePerKwh Float?   // off-peak rate
+  peakHoursStart    Int?     // hour 0-23 when peak starts
+  peakHoursEnd      Int?     // hour 0-23 when peak ends
+  currency          String   @default("EUR")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([lat, lng])
+  @@map("supercharger_locations")
+}
+
+// ============================================================================
+// VAMPIRE DRAIN
+// ============================================================================
+
+model VampireDrainLog {
+  id          String   @id @default(cuid())
+  vehicleId   String
+  date        DateTime @db.Date
+  startSoc    Float
+  endSoc      Float
+  drainPct    Float
+  durationHrs Float
+  drainPerHr  Float
+  parkedAt    DateTime
+  checkedAt   DateTime
+  createdAt   DateTime @default(now())
+
+  vehicle     Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@unique([vehicleId, date])
+  @@index([vehicleId])
+  @@map("vampire_drain_logs")
+}
+
+// ============================================================================
+// BATTERY ANALYTICS (~2 tables)
+// ============================================================================
+
+model BatteryHealth {
+  id                    String   @id @default(cuid())
+  vehicleId             String
+  timestamp             DateTime @default(now())
+
+  // SOH metrics
+  sohPercent            Float    // State of Health (%)
+  estimatedCapacityKwh  Float    // Estimated usable capacity (kWh)
+  nominalCapacityKwh    Float    @default(75.0) // Nominal at time of measurement
+  degradationPercent    Float    @default(0.0)
+
+  // Method used: trip | charging | rated_range | weighted_median
+  method                String   @default("trip")
+  confidenceScore       Float    @default(0.5) // 0.0 - 1.0
+  sampleCount           Int      @default(1)
+
+  // Per-method values (stored for audit)
+  tripSoh               Float?   // SOH from trip method
+  chargingSoh           Float?   // SOH from charging method
+  ratedRangeSoh         Float?   // SOH from rated range method
+
+  // Conditions at measurement time
+  avgBatteryTempC       Float?   // Avg battery temp during samples
+  cycles                Float?   // Cumulative cycle count at measurement time
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, timestamp])
+  @@map("battery_health")
+}
+
+model ChargeCycle {
+  id               String   @id @default(cuid())
+  vehicleId        String
+  timestamp        DateTime @default(now())
+  cycleCount       Int
+  estimatedCycles  Int?
+  
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, timestamp])
+  @@map("charge_cycles")
+}
+
+// ============================================================================
+// ENERGY ANALYTICS (~2 tables)
+// ============================================================================
+
+model DailyEnergy {
+  id              String   @id @default(cuid())
+  vehicleId       String
+  date            DateTime
+  distanceKm      Float    @default(0)
+  energyUsedKwh   Float    @default(0)
+  energyAddedKwh  Float    @default(0)
+  regenEnergyKwh  Float    @default(0)
+  efficiencyWhkm  Float?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@unique([vehicleId, date])
+  @@index([vehicleId])
+  @@map("daily_energy")
+}
+
+model MonthlyEnergy {
+  id              String   @id @default(cuid())
+  vehicleId       String
+  month           DateTime
+  distanceKm      Float    @default(0)
+  energyUsedKwh   Float    @default(0)
+  energyAddedKwh  Float    @default(0)
+  regenEnergyKwh  Float    @default(0)
+  efficiencyWhkm  Float?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@unique([vehicleId, month])
+  @@index([vehicleId])
+  @@map("monthly_energy")
+}
+
+// ============================================================================
+// NOTIFICATIONS (~2 tables)
+// ============================================================================
+
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String
+  vehicleId   String?
+  ruleId      String?
+  type        String   // low_soc, charging_complete, vehicle_unlocked, etc.
+  title       String   @default("")
+  message     String
+  body        String   @default("")
+  channels    String[] @default([])
+  status      String   @default("unread") // unread, read
+  read        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([userId, status])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model NotificationRule {
+  id           String    @id @default(cuid())
+  userId       String
+  vehicleId    String?
+  name         String    @default("")
+  ruleType     String    // low_soc, charging_complete, vehicle_unlocked (legacy)
+  triggerType  String    @default("soc_below") // soc_below, soc_above, charging_started, charging_complete, vehicle_unlocked, speed_above, geofence_exit
+  triggerValue Json?     // { value: 20 } or { ssid: "home" } etc.
+  threshold    Float?
+  cooldownSec  Int       @default(3600)
+  channels     String[]  @default(["in_app"])
+  lastFiredAt  DateTime?
+  enabled      Boolean   @default(true)
+  /// Optional extra filters evaluated before firing: [{ field, op, value }]
+  /// Supported fields: time_of_day, vehicle_id, location
+  conditions   Json?
+  /// Optional action overrides: [{ type, config }]
+  /// type: 'notify' (default) | 'webhook'
+  actions      Json?
+  /// Tenant identifier — 'selfhosted' for single-tenant deployments, orgId for SaaS.
+  tenantId     String    @default("selfhosted")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, enabled])
+  @@map("notification_rules")
+}
+
+model UserNotificationSettings {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  telegramChatId  String?
+  telegramEnabled Boolean  @default(false)
+  webPushEnabled  Boolean  @default(true)
+  emailEnabled    Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_notification_settings")
+}
+
+model WebPushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("web_push_subscriptions")
+}
+
+// ============================================================================
+// AUTOMATIONS (~1 table)
+// ============================================================================
+
+model Automation {
+  id          String    @id @default(cuid())
+  userId      String
+  vehicleId   String?
+  name        String
+  description String?
+
+  enabled     Boolean   @default(true)
+
+  // Structured JSONB payloads — avoids EAV tables for the MVP:
+  //   conditions: AutomationCondition[]   (field, operator, value)
+  //   actions:    AutomationAction[]      (type, target, parameters)
+  //   schedule:   { type, cronExpression?, weekDays?, locations? }
+  conditions  Json      @default("[]")
+  actions     Json      @default("[]")
+  schedule    Json      @default("{\"type\":\"always\"}")
+
+  lastRunAt   DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicle Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+
+  @@index([userId, enabled])
+  @@index([vehicleId])
+  @@map("automations")
+}
+
+// ============================================================================
+// BILLING (Stripe-backed subscriptions + entitlements cache)
+// ============================================================================
+
+enum Plan {
+  FREE
+  PRO
+  FLEET
+}
+
+enum SubscriptionStatus {
+  ACTIVE    // active or past_due (grace period)
+  INACTIVE  // canceled, unpaid, or never subscribed
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  userId               String             @unique
+  plan                 Plan               @default(FREE)
+  status               SubscriptionStatus @default(INACTIVE)
+  currentPeriodStart   DateTime           @default(now())
+  currentPeriodEnd     DateTime           @default(now())
+  cancelAtPeriodEnd    Boolean            @default(false)
+  stripeCustomerId     String?
+  stripeSubscriptionId String?            @unique
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  user   User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events SubscriptionEvent[]
+
+  @@map("subscriptions")
+}
+
+model SubscriptionEvent {
+  id             BigInt       @id @default(autoincrement())
+  subscriptionId String?
+  userId         String?
+  stripeEventId  String       @unique
+  type           String
+  rawPayload     Json
+  createdAt      DateTime     @default(now())
+
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@map("subscription_events")
+}
+
+/// Denormalised entitlements cache — updated by webhook handler.
+/// Controllers read from here for fast plan-based access control.
+model UserEntitlements {
+  userId               String             @id
+  plan                 Plan               @default(FREE)
+  status               SubscriptionStatus @default(INACTIVE)
+  maxVehicles          Int                @default(1)
+  tripHistoryDays      Int                @default(7)
+  chargingHistoryDays  Int                @default(7)
+  analyticsDepthDays   Int                @default(7)
+  liveRefreshSeconds   Int                @default(60)
+  aiInsights           Boolean            @default(false)
+  aiAgent              Boolean            @default(false)
+  ragEnabled           Boolean            @default(false)
+  fleetDashboard       Boolean            @default(false)
+  webhooks             Boolean            @default(false)
+  updatedAt            DateTime           @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_entitlements")
+}
+
+model Invoice {
+  id          String   @id @default(cuid())
+  userId      String
+  amount      Float
+  status      String   @default("pending") // pending, paid, failed
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+  @@map("invoices")
+}
+
+// ============================================================================
+// AI LAYER (~3 tables)
+// ============================================================================
+
+model AIActionLog {
+  id          String   @id @default(cuid())
+  vehicleId   String
+  action      String   // command name
+  context     Json?    // snapshot of context at execution time
+  executedAt  DateTime @default(now())
+  success     Boolean
+  error       String?
+
+  @@index([vehicleId, executedAt])
+  @@map("ai_action_logs")
+}
+
+model AIInsightLog {
+  id          String   @id @default(cuid())
+  vehicleId   String
+  insightId   String
+  title       String
+  severity    String
+  createdAt   DateTime @default(now())
+  accepted    Boolean?  // null = no feedback, true/false = user response
+
+  @@index([vehicleId, createdAt])
+  @@map("ai_insight_logs")
+}
+
+model AIPreferences {
+  id        String @id @default(cuid())
+  userId    String @unique
+  autoMode  String @default("suggest")  // off | suggest | auto
+  maxAutoActionsPerHour Int @default(3)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ai_preferences")
+}
+
+// ============================================================================
+// AI RAG — CONTEXT EMBEDDINGS
+// ============================================================================
+// Weekly / monthly text summaries with pgvector embeddings.
+// Generated async by EmbeddingWorker, queried at chat time for RAG.
+// No raw data duplication: only pre-computed text + 768-dim vector.
+
+model UserContextEmbedding {
+  id          BigInt    @id @default(autoincrement())
+  userId      String
+  vehicleId   String
+  periodType  String    // 'weekly' | 'monthly'
+  periodStart DateTime
+  periodEnd   DateTime
+  insightType String    // 'weekly_summary' | 'monthly_summary'
+  content     String    @db.Text
+  /// Groq nomic-embed-text-v1.5 → 768 dimensions (pgvector)
+  embedding   Unsupported("vector(768)")?
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+
+  @@index([vehicleId, periodStart(sort: Desc)])
+  @@map("user_context_embeddings")
+}
+
+// ============================================================================
+// RAW TELEMETRY STORE (event-sourced, immutable)
+// ============================================================================
+// Every incoming telemetry event is persisted BEFORE normalization.
+// Purposes: replay, debugging, ML feature extraction, audit.
+// Retention: 30 days (managed by TimescaleDB retention policy).
+model TelemetryRaw {
+  id          String   @id @default(cuid())
+  vehicleId   String
+  source      String   // "fleet_telemetry" | "v1_streaming" | "rest_poll" | "mqtt"
+  receivedAt  DateTime @default(now())
+  payload     Json     // raw event exactly as received
+  payloadHash String?  // sha256 of normalized payload — for fast dedup queries
+
+  @@index([vehicleId, receivedAt])
+  // Supports keyset pagination for raw replay: WHERE vehicleId … ORDER BY receivedAt, id
+  @@index([vehicleId, receivedAt, id])
+  @@index([vehicleId, payloadHash])
+  @@map("telemetry_raw")
+}
+
+// ============================================================================
+// COMMAND PRESETS & HISTORY
+// ============================================================================
+
+/// Saved command shortcuts per user/vehicle (e.g. "Set charge to 80%")
+model CommandPreset {
+  id          String   @id @default(cuid())
+  userId      String
+  vehicleId   String?
+  name        String
+  command     String   // SET_CHARGE_LIMIT, CLIMATE_ON, etc.
+  params      Json?    // { percent: 80 } — command-specific parameters
+  icon        String?  // lucide icon name hint for the frontend
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicle Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([vehicleId])
+  @@map("command_presets")
+}
+
+/// Audit log of every command sent to a vehicle
+model CommandHistory {
+  id         String   @id @default(cuid())
+  userId     String
+  vehicleId  String
+  presetId   String?  // null if executed ad-hoc
+  command    String
+  params     Json?
+  status     String   @default("pending") // pending, success, failed
+  result     Json?    // raw Tesla API response
+  error      String?
+  executedAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([userId, executedAt])
+  @@index([vehicleId, executedAt])
+  @@map("command_history")
+}
+
+// ============================================================================
+// LOGIN EVENTS (security audit trail)
+// ============================================================================
+
+/// One row per login attempt — successful and failed
+model LoginEvent {
+  id         String   @id @default(cuid())
+  userId     String?  // null for failed attempts where user was not found
+  email      String   // always stored for audit (even failed)
+  ip         String?
+  userAgent  String?
+  device     String?  // 'desktop' | 'mobile' | 'tablet' | 'unknown'
+  success    Boolean
+  failReason String?  // invalid_password | user_not_found | account_suspended
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@map("login_events")
+}
+
+// ============================================================================
+// AUDIT EVENTS (broad security + action trail)
+// ============================================================================
+
+/// Immutable audit trail for security-relevant actions across the platform.
+/// Covers auth events, vehicle commands, rule/automation changes, and account changes.
+model AuditEvent {
+  id         String   @id @default(cuid())
+  userId     String?
+  type       String   // 'auth' | 'vehicle.command' | 'rule' | 'automation' | 'user'
+  action     String   // 'login.success' | 'vehicle.command.lock' | 'rule.created' | ...
+  targetType String?  // 'vehicle' | 'rule' | 'automation' | 'user'
+  targetId   String?  // id of the target entity
+  ip         String?
+  userAgent  String?
+  metadata   Json?    // arbitrary extra fields (command params, diff, etc.)
+  /// Tenant identifier — 'selfhosted' for single-tenant deployments, orgId for SaaS.
+  tenantId   String   @default("selfhosted")
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([type, createdAt])
+  @@map("audit_events")
+}
