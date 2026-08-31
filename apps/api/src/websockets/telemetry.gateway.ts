@@ -13,6 +13,21 @@ import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { VehiclesService } from '../vehicles/vehicles.service';
+import { getDataQuality, type DataQuality } from '../analytics/vehicle-analytics.service';
+
+/** Envelope of the `telemetry` WS event — `data` carries the raw sensor
+ *  fields (unchanged, whatever the caller passed); `lastUpdate`/
+ *  `dataQuality`/`dataFreshnessSec` are the freshness signal that used to
+ *  exist only in the REST `/vehicles/:id/status` response. */
+export interface TelemetryUpdatePayload {
+  type: 'telemetry';
+  vehicleId: string;
+  data: Record<string, unknown>;
+  lastUpdate: string | null;
+  dataQuality: DataQuality;
+  dataFreshnessSec: number | null;
+  timestamp: string;
+}
 
 // ── Rate-limit constants ───────────────────────────────────────────────────
 /** Max simultaneous WS connections from a single IP address */
@@ -169,13 +184,56 @@ export class TelemetryGateway
     return { event: 'unsubscribed', room };
   }
 
-  // Emit telemetry update to all subscribers of a vehicle
-  emitTelemetryUpdate(vehicleId: string, data: any) {
+  /**
+   * Emit a telemetry update to all subscribers of a vehicle.
+   *
+   * `lastUpdate`/`dataQuality`/`dataFreshnessSec` are computed here, from
+   * `sourceTimestamp` (defaults to "now"). Every current caller
+   * (telemetry-pipeline.service.ts, telemetry.processor.ts — verified, none
+   * replay historical data through this method) emits synchronously with
+   * newly-received data, so the default is correct as-is. `sourceTimestamp`
+   * is accepted explicitly (not just assumed) so this stays correct if that
+   * ever changes, and so freshness is unit-testable at every tier without
+   * faking the system clock.
+   *
+   * This closes the gap where mobile's dataQuality badge was readable only
+   * from the periodically-stale REST cache, never from the live feed.
+   */
+  emitTelemetryUpdate(
+    vehicleId: string,
+    data: Record<string, unknown>,
+    sourceTimestamp?: string | Date | null,
+  ) {
     if (!this.server) return;
-    const payload = {
+
+    // Distinguish "not passed" (undefined → assume now, matches every real
+    // caller today) from an explicit `null` ("caller knows there's no valid
+    // timestamp" → unknown freshness → OFFLINE, same semantics as
+    // getVehicleStatus's own `lastUpdate: string | null`).
+    let lastUpdate: string | null;
+    let dataFreshnessSec: number | null;
+    if (sourceTimestamp === undefined) {
+      lastUpdate = new Date().toISOString();
+      dataFreshnessSec = 0;
+    } else if (sourceTimestamp === null) {
+      lastUpdate = null;
+      dataFreshnessSec = null;
+    } else {
+      const dataTs = new Date(sourceTimestamp);
+      const isValid = !Number.isNaN(dataTs.getTime());
+      lastUpdate = isValid ? dataTs.toISOString() : null;
+      dataFreshnessSec = isValid
+        ? Math.max(0, Math.floor((Date.now() - dataTs.getTime()) / 1000))
+        : null;
+    }
+
+    const payload: TelemetryUpdatePayload = {
       type: 'telemetry',
       vehicleId,
       data,
+      lastUpdate,
+      dataQuality: getDataQuality(dataFreshnessSec),
+      dataFreshnessSec,
       timestamp: new Date().toISOString(),
     };
 

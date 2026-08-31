@@ -9,6 +9,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { colors, color } from '@/theme/tokens';
 import { useTelemetrySocket } from '@/hooks/useTelemetrySocket';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { useReactQueryFocusSync } from '@/hooks/useReactQueryFocusSync';
 import { initI18n } from '@/i18n';
 
 const queryClient = new QueryClient({
@@ -17,6 +18,11 @@ const queryClient = new QueryClient({
       staleTime: 1000 * 30,
       retry: 1,
       refetchOnReconnect: true,
+      // Explicit, not just relying on the framework default: on foreground
+      // (via useReactQueryFocusSync below), a query refetches only if it's
+      // both currently mounted/observed AND past its own staleTime — one
+      // attempt per focus transition, never a loop or periodic poll.
+      refetchOnWindowFocus: true,
     },
   },
 });
@@ -24,6 +30,9 @@ const queryClient = new QueryClient({
 function AppBootstrap() {
   useTelemetrySocket();
   usePushNotifications();
+  // Single AppState→focusManager wiring for the whole app — must not be
+  // duplicated per screen (see the hook's own doc comment).
+  useReactQueryFocusSync();
   return null;
 }
 

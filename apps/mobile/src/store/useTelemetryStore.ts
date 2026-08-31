@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { DataQuality } from '@/features/vehicles/useVehicleSummary';
 
 export interface TelemetryPoint {
   vehicleId: string;
@@ -10,6 +11,14 @@ export interface TelemetryPoint {
   latitude?: number;
   longitude?: number;
   timestamp: string;
+  // P1.2 telemetry freshness fix: these now arrive on every live 'telemetry'
+  // WS event (apps/api/src/websockets/telemetry.gateway.ts), so the freshness
+  // badge is no longer read only from the periodically-stale REST cache.
+  // Optional in the type as a defensive fallback (e.g. an older cached
+  // client build during a rolling deploy) — in practice always present.
+  dataQuality?: DataQuality;
+  dataFreshnessSec?: number | null;
+  lastUpdate?: string | null;
 }
 
 interface TelemetryState {

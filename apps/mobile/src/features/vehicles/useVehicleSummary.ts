@@ -9,6 +9,16 @@ export interface VehicleRow {
   displayName?: string | null;
 }
 
+/** Backend's real `DataQuality` union (apps/api/src/analytics/vehicle-analytics.service.ts). */
+export type DataQuality = 'REALTIME' | 'DELAYED' | 'STALE' | 'OFFLINE';
+
+/**
+ * GET /vehicles/:id/status response — verified against
+ * apps/api/src/analytics/vehicle-analytics.service.ts `getVehicleStatus`.
+ * Only the fields the mobile UI actually consumes are typed here; the
+ * endpoint also returns speed/batteryTemp/voltage/insideTemp/odometer/
+ * drivingState/locked/isOnline, intentionally left untyped/unused for P0.
+ */
 export interface VehicleStatus {
   soc: number | null;
   batteryRangeKm: number | null;
@@ -16,6 +26,9 @@ export interface VehicleStatus {
   chargingState: string | null;
   vehicleState: string;
   lastUpdate?: string | null;
+  power: number | null;
+  dataQuality: DataQuality;
+  dataFreshnessSec: number | null;
 }
 
 export function useVehicleSummary() {
