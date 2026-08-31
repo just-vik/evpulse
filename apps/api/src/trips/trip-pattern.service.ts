@@ -82,8 +82,25 @@ export class TripPatternService implements OnModuleInit {
   private readonly logger = new Logger(TripPatternService.name);
 
   // ── Tunable parameters ────────────────────────────────────────────────
-  /** REST polls per day allocated to sleeping-mode wake-checks (per vehicle) */
-  private readonly DAILY_BUDGET_POLLS = 80;
+  /**
+   * REST polls per day allocated to sleeping-mode wake-checks, per vehicle.
+   *
+   * Was a hardcoded 80/day regardless of fleet size — at 2 Daten calls/poll
+   * (getVehicleSummary + getVehicleData) that alone is 160 Daten/day = ~€9.60/
+   * month for ONE vehicle, i.e. almost the entire €10 Tesla Developer free
+   * tier, before counting driving/charging/parked-awake REST polls at all
+   * (see 2026-08-31 billing lockout incident). Now derived from the actual
+   * fleet-wide budget (TESLA_FLEET_MONTHLY_BUDGET_EUR, same env var the
+   * proactive breaker in telemetry-fetcher.service.ts uses) split across the
+   * active fleet, refreshed alongside the nightly pattern rebuild.
+   */
+  private dailyBudgetPollsPerVehicle = 80;
+  private static readonly DATEN_CALLS_PER_EUR = 500;
+  private static readonly DATEN_CALLS_PER_POLL = 2; // summary + vehicle_data
+  /** Reserve this share of the fleet Daten budget for sleep-hazard polling;
+   * the rest is headroom for driving/charging/parked-awake REST + wakes. */
+  private static readonly SLEEP_BUDGET_SHARE = 0.7;
+  private static readonly MIN_DAILY_BUDGET_POLLS = 8; // never schedule less than this
   /** Hard floor — never faster than this even at peak departure hour */
   private readonly MIN_INTERVAL_MS = 3 * 60_000;   // 3 min
   /** Hard ceiling — never slower than this even at 3am */
@@ -113,6 +130,25 @@ export class TripPatternService implements OnModuleInit {
     // uses real data rather than the flat fallback interval.
     void this.buildAllPatterns().catch(e =>
       this.logger.warn(`[Pattern] Pattern init failed (will use fallback): ${e.message}`),
+    );
+  }
+
+  /** Recomputes dailyBudgetPollsPerVehicle from the fleet-wide € budget and
+   * the given active-vehicle count. Called once per pattern rebuild (nightly +
+   * on module init) rather than per-lookup — this doesn't need to react within
+   * the same day as a vehicle being added/removed. */
+  private refreshDailyBudgetPollsPerVehicle(activeVehicleCount: number): void {
+    const monthlyBudgetEur = Number(process.env.TESLA_FLEET_MONTHLY_BUDGET_EUR ?? 10);
+    const fleetDailyPolls =
+      (monthlyBudgetEur * TripPatternService.DATEN_CALLS_PER_EUR * TripPatternService.SLEEP_BUDGET_SHARE) /
+      TripPatternService.DATEN_CALLS_PER_POLL /
+      30; // approx days/month
+    const perVehicle = fleetDailyPolls / Math.max(1, activeVehicleCount);
+    this.dailyBudgetPollsPerVehicle = Math.max(TripPatternService.MIN_DAILY_BUDGET_POLLS, perVehicle);
+    this.logger.log(
+      `[Pattern] Fleet budget: €${monthlyBudgetEur}/mo, ${activeVehicleCount} vehicle(s) → ` +
+      `${this.dailyBudgetPollsPerVehicle.toFixed(1)} sleep-polls/day/vehicle ` +
+      `(was hardcoded 80 before the 2026-08-31 fix)`,
     );
   }
 
@@ -190,6 +226,7 @@ export class TripPatternService implements OnModuleInit {
   private async buildAllPatterns(): Promise<void> {
     try {
       const vehicles = await this.prisma.vehicle.findMany({ select: { id: true } });
+      this.refreshDailyBudgetPollsPerVehicle(vehicles.length);
       await Promise.all(
         vehicles.map(v =>
           this.buildPatternForVehicle(v.id).catch(e =>
@@ -260,7 +297,7 @@ export class TripPatternService implements OnModuleInit {
     // "hazard weight" to B/(7×Σ√p) polls.
     let sumSqrtP = 0;
     for (let i = 0; i < 168; i++) sumSqrtP += Math.sqrt(pTable[i]);
-    const C_hours = sumSqrtP / (7 * this.DAILY_BUDGET_POLLS);
+    const C_hours = sumSqrtP / (7 * this.dailyBudgetPollsPerVehicle);
 
     // ── Persist ───────────────────────────────────────────────────────
     const payload = JSON.stringify({
@@ -358,6 +395,6 @@ export class TripPatternService implements OnModuleInit {
   private defaultC(): number {
     // Σ√p̂ over all 168 slots under the uniform prior p̂ = 1/24
     const sumSqrtP = 168 * Math.sqrt(1 / 24);
-    return sumSqrtP / (7 * this.DAILY_BUDGET_POLLS);
+    return sumSqrtP / (7 * this.dailyBudgetPollsPerVehicle);
   }
 }

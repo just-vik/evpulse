@@ -10,6 +10,14 @@ import { addTeslaRetryInterceptor } from './tesla-http.config';
 import { REDIS_CLIENT } from '../infra/redis.provider';
 import { MetricsService } from '../metrics/metrics.service';
 import { tracer } from '../otel';
+import { classifyTeslaApiError, sendTelegramOpsAlert } from './tesla-api-error.util';
+
+/** Global (account-wide) flag — Tesla Fleet API billing limit was hit.
+ * Read by TelemetryFetcherService to avoid mislabeling every vehicle as "asleep"
+ * and to switch REST polling into a rare keep-alive cadence until the limit clears. */
+export const TESLA_BILLING_BLOCKED_KEY = 'tesla:billing-blocked';
+const BILLING_BLOCKED_TTL_SECONDS = 6 * 3600;
+const ALERT_COOLDOWN_SECONDS = 3600;
 
 /**
  * TeslaFleetService - Official Tesla Fleet API Integration
@@ -155,6 +163,38 @@ export class TeslaFleetService {
 
   // ── Vehicle data ──────────────────────────────────────────────────────────
 
+  /**
+   * Classifies a failed Tesla API call, and — on billing_limit / unauthorized —
+   * sets the account-wide TESLA_BILLING_BLOCKED_KEY flag and fires a deduplicated
+   * Telegram alert. Never throws; callers keep their existing null/throw behavior.
+   */
+  private async handleClassifiedFailure(context: string, error: any): Promise<void> {
+    const classified = classifyTeslaApiError(error);
+    this.logger.error(
+      `${context}: [${classified.kind}] status=${classified.status ?? 'n/a'} ${error.message}`,
+    );
+
+    if (classified.kind !== 'billing_limit' && classified.kind !== 'unauthorized') {
+      return;
+    }
+
+    await this.redis
+      .set(TESLA_BILLING_BLOCKED_KEY, classified.kind, 'EX', BILLING_BLOCKED_TTL_SECONDS)
+      .catch(() => {});
+
+    const cooldownKey = `tesla:ops-alert-cooldown:${classified.kind}`;
+    const gotLock = await this.redis.set(cooldownKey, '1', 'EX', ALERT_COOLDOWN_SECONDS, 'NX').catch(() => null);
+    if (gotLock !== 'OK') return; // already alerted within the last hour
+
+    const label = classified.kind === 'billing_limit'
+      ? 'Tesla Fleet API billing limit hit — account-wide 403 (not vehicle sleep)'
+      : 'Tesla Fleet API unauthorized — app access or scope may have been revoked';
+    await sendTelegramOpsAlert(
+      `🚨 *EVPulse Ops Alert*\n\nCRITICAL ${label}.\n\nContext: ${context}\n\n` +
+      `Check developer.tesla.com billing/app status. Telemetry and trip/charging history will not update until resolved.\n\n_${new Date().toISOString()}_`,
+    );
+  }
+
   async getVehicles(accessToken: string): Promise<any[]> {
     try {
       const response = await firstValueFrom(
@@ -164,7 +204,7 @@ export class TeslaFleetService {
       );
       return response.data.response ?? [];
     } catch (error) {
-      this.logger.error(`Failed to fetch vehicles: ${error.message}`);
+      await this.handleClassifiedFailure('Failed to fetch vehicles', error);
       throw error;
     }
   }
@@ -185,9 +225,7 @@ export class TeslaFleetService {
       );
       return response.data.response ?? null;
     } catch (error) {
-      this.logger.error(
-        `Failed to fetch vehicle summary for ${teslaVehicleId}: ${error.message}`,
-      );
+      await this.handleClassifiedFailure(`Failed to fetch vehicle summary for ${teslaVehicleId}`, error);
       return null;
     }
   }
@@ -214,9 +252,7 @@ export class TeslaFleetService {
       );
       return response.data.response;
     } catch (error) {
-      this.logger.error(
-        `Tesla API error for vehicle ${teslaVehicleId}: ${error.message}`
-      )
+      await this.handleClassifiedFailure(`Tesla API error for vehicle ${teslaVehicleId}`, error);
       return null
     }
   }

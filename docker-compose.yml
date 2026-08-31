@@ -320,6 +320,13 @@ services:
       TESLA_BUDGET_MONTHLY_EUR: "50"
       TESLA_BUDGET_SOFT_PCT: "0.85"
       TESLA_BUDGET_ESTIMATED_EUR_PER_REQUEST: "0.004"
+      # Real, enforced fleet-wide Tesla Developer billing budget (matches the actual
+      # free-tier deposit) — drives the sleep-hazard poll budget in TripPatternService
+      # and the proactive hard stop in TelemetryFetcherService. Unlike TESLA_BUDGET_*
+      # above (diagnostics-only, never enforced), this one actually throttles REST
+      # polling. Raise to "13" if the extra €3 top-up gets added on developer.tesla.com.
+      TESLA_FLEET_MONTHLY_BUDGET_EUR: "10"
+      TESLA_FLEET_BUDGET_STOP_PCT: "0.9"
       # ── OpenTelemetry ──────────────────────────────────────────────────────
       # Disable until a Tempo collector is running (avoids connection-refused noise).
       # To enable: set OTEL_ENABLED=true and start the observability profile:
@@ -383,6 +390,13 @@ services:
       TESLA_BUDGET_MONTHLY_EUR: "50"
       TESLA_BUDGET_SOFT_PCT: "0.85"
       TESLA_BUDGET_ESTIMATED_EUR_PER_REQUEST: "0.004"
+      # Real, enforced fleet-wide Tesla Developer billing budget (matches the actual
+      # free-tier deposit) — drives the sleep-hazard poll budget in TripPatternService
+      # and the proactive hard stop in TelemetryFetcherService. Unlike TESLA_BUDGET_*
+      # above (diagnostics-only, never enforced), this one actually throttles REST
+      # polling. Raise to "13" if the extra €3 top-up gets added on developer.tesla.com.
+      TESLA_FLEET_MONTHLY_BUDGET_EUR: "10"
+      TESLA_FLEET_BUDGET_STOP_PCT: "0.9"
       # ── OpenTelemetry (keep in sync with api service above) ────────────────
       OTEL_ENABLED: "true"
       OTEL_SERVICE_NAME: "evpulse-api"

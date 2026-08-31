@@ -1,6 +1,6 @@
 import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
 import { getCircuitBreakerStatus } from './tesla-http.config';
-import { TeslaFleetService } from './tesla-fleet.service';
+import { TeslaFleetService, TESLA_BILLING_BLOCKED_KEY } from './tesla-fleet.service';
 import { TeslaOAuthService } from './tesla-oauth.service';
 import { VehicleStateMachineService, VehicleState } from './vehicle-state-machine.service';
 import { TelemetryService } from '../telemetry/telemetry.service';
@@ -39,6 +39,26 @@ const POLL_PARKED_MS   = parseInt(process.env.TESLA_POLL_INTERVAL_PARKED_MS   ??
 const DEFAULT_MONTHLY_BUDGET_EUR = 25;      // reference budget for diagnostics display
 const DEFAULT_SOFT_LIMIT_PCT = 0.85;        // threshold used for diagnostics reporting only
 const DEFAULT_REQ_COST_EUR = 0.001;         // halved: app counts 2x more calls than Tesla bills
+
+/**
+ * Fleet-wide proactive budget breaker (2026-08-31 fix).
+ *
+ * Tesla Developer Portal's free tier bills "Daten" (data) requests at 500/€1.
+ * Every REST poll costs 2 Daten calls (getVehicleSummary + getVehicleData).
+ * TESLA_FLEET_MONTHLY_BUDGET_EUR is the actual free-tier deposit (default €10 —
+ * matches the real Tesla free credit; see docs/INCIDENT_2026_TLS_CERT.md-adjacent
+ * billing incident). This is a HARD stop, unlike the diagnostics-only budget
+ * above: once fleet-wide usage crosses FLEET_BUDGET_STOP_PCT of the cap, REST
+ * polling degrades to at most one keep-alive call per vehicle per hour instead
+ * of waiting for Tesla to return 403 (which used to go undetected for days —
+ * see classifyTeslaApiError in tesla-fleet.service.ts).
+ */
+const DATEN_CALLS_PER_EUR = 500;
+const DATEN_CALLS_PER_POLL = 2; // getVehicleSummary + getVehicleData
+const FLEET_MONTHLY_BUDGET_EUR = Number(process.env.TESLA_FLEET_MONTHLY_BUDGET_EUR ?? 10);
+const FLEET_BUDGET_STOP_PCT = Number(process.env.TESLA_FLEET_BUDGET_STOP_PCT ?? 0.9);
+const FLEET_BUDGET_CAP_CALLS = FLEET_MONTHLY_BUDGET_EUR * DATEN_CALLS_PER_EUR;
+const DEGRADED_KEEPALIVE_INTERVAL_SECONDS = 3600; // 1 call/vehicle/hour once degraded
 
 /**
  * Atomic Lua rate-limiter script.
@@ -184,7 +204,26 @@ export class TelemetryFetcherService {
     const key = `tesla:billing:req-count:${vehicleId}:${month}`;
     await this.rawRedis.incr(key);
     await this.rawRedis.expire(key, ttl);
+    const fleetKey = `tesla:billing:fleet-req-count:${month}`;
+    await this.rawRedis.incr(fleetKey);
+    await this.rawRedis.expire(fleetKey, ttl);
     void this.apiUsage?.trackWake(vehicleId).catch(() => {});
+  }
+
+  /** True once fleet-wide Daten usage crosses FLEET_BUDGET_STOP_PCT of the monthly cap. */
+  private async isFleetBudgetDegraded(): Promise<boolean> {
+    const fleetKey = `tesla:billing:fleet-req-count:${this.getMonthKey()}`;
+    const calls = Number(await this.rawRedis.get(fleetKey)) || 0;
+    return calls >= FLEET_BUDGET_CAP_CALLS * FLEET_BUDGET_STOP_PCT;
+  }
+
+  /** Budget-degraded mode still allows one real call per vehicle per hour, so
+   * accuracy degrades gracefully instead of going fully dark for the rest of
+   * the month. Returns true if this call may proceed. */
+  private async tryConsumeKeepaliveSlot(vehicleId: string): Promise<boolean> {
+    const key = `tesla:budget-degraded-keepalive:${vehicleId}`;
+    const res = await this.rawRedis.set(key, '1', 'EX', DEGRADED_KEEPALIVE_INTERVAL_SECONDS, 'NX');
+    return res === 'OK';
   }
 
   private async setLastFailure(
@@ -250,6 +289,33 @@ export class TelemetryFetcherService {
     opts?: { bypassSlidingWindow?: boolean },
   ): Promise<ReturnType<typeof normalizeTeslaPayload> | null> {
     try {
+      // Confirmed billing lockout (Tesla actually returned 403 for a billing/auth
+      // reason — see classifyTeslaApiError in tesla-fleet.service.ts). Bypass calls
+      // (user-initiated pollOnce) are still allowed through so a manual retry can
+      // confirm whether a raised limit already fixed things.
+      if (!opts?.bypassSlidingWindow) {
+        const billingBlocked = await this.redis.get(TESLA_BILLING_BLOCKED_KEY).catch(() => null);
+        if (billingBlocked) {
+          this.logger.debug(`Vehicle ${vehicleId} skipped — Tesla billing lockout active (${billingBlocked})`);
+          activeSpan()?.setAttribute('poll.skip_reason', 'billing_blocked');
+          return null;
+        }
+      }
+
+      // Proactive fleet-wide budget breaker: once combined usage crosses
+      // FLEET_BUDGET_STOP_PCT of the monthly Daten cap, degrade to at most one
+      // real REST call per vehicle per hour instead of waiting for Tesla's own
+      // 403 — that used to burn through the whole remaining month blind.
+      if (!opts?.bypassSlidingWindow && (await this.isFleetBudgetDegraded())) {
+        const allowedKeepalive = await this.tryConsumeKeepaliveSlot(vehicleId);
+        if (!allowedKeepalive) {
+          this.logger.debug(`Vehicle ${vehicleId} skipped — fleet budget degraded, next keep-alive slot pending`);
+          activeSpan()?.setAttribute('poll.skip_reason', 'fleet_budget_degraded');
+          return null;
+        }
+        this.logger.warn(`Vehicle ${vehicleId} fleet budget degraded — using hourly keep-alive slot`);
+      }
+
       // Tesla billing backoff: if Tesla returned 403 (EXCEEDED_LIMIT) recently, stop hammering.
       // Checked before sliding window so ALL callers (cron, gap-recovery, etc.) respect it.
       if (!opts?.bypassSlidingWindow) {
@@ -394,6 +460,19 @@ export class TelemetryFetcherService {
       await this.recordEstimatedBillingRequest(vehicleId);
 
       if (!vehicleData) {
+        // Don't confuse a billing/auth lockout with the car actually being asleep —
+        // tesla-fleet.service.ts already classified the failure and set this flag
+        // if it was a 403 billing_limit/unauthorized, not a real sleep response.
+        // Marking SLEEPING here would hide the vehicle from checkTelemetryFreshness()
+        // (it only alerts for non-sleeping vehicles), which is exactly how the
+        // 2026-08-27 billing lockout went unnoticed for 4 days.
+        const billingBlocked = await this.redis.get(TESLA_BILLING_BLOCKED_KEY).catch(() => null);
+        if (billingBlocked) {
+          this.logger.warn(`No data for vehicle ${vehicleId} — Tesla billing lockout (${billingBlocked}), not treating as sleep`);
+          await this.setLastFailure(vehicleId, 'billing_scope_403');
+          return null;
+        }
+
         this.logger.warn(
           `No data received for vehicle ${vehicleId} - vehicle may be sleeping`,
         );
