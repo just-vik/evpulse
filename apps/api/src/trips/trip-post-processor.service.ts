@@ -852,6 +852,15 @@ export class TripPostProcessorService {
           matchedPolyline = result.polyline;
           routeType       = result.type;
 
+          // A route stitched across a real telemetry gap via a 2-point OSRM
+          // /route guess (bridged singleton) is road-network guesswork, not
+          // a verified trace through that stretch — never let it carry HIGH
+          // confidence, even though the rest of the trip's metrics may be fine.
+          if (result.singletonBridgeCount > 0) {
+            repairReasons.push(`route_singleton_bridged(${result.singletonBridgeCount})`);
+            if (reliability === 'HIGH') reliability = 'MEDIUM';
+          }
+
           // Distance priority: OSRM > odometer/hybrid > GPS haversine
           // OSRM result is most accurate when GPS coverage is good (≥10 points).
           // For sparse GPS (odometer/hybrid was used), only accept OSRM if it agrees
@@ -873,7 +882,12 @@ export class TripPostProcessorService {
             else if (odometerDistKm) {
               matchedDistanceKm = Math.round((result.distanceKm + odometerDistKm) / 2 * 10) / 10;
             }
-            repairReasons.push('map_matched');
+            // Only tag 'map_matched' when the result actually came from a
+            // real trace match. A merged result can end up 'estimated' when
+            // any bridged sub-segment fell back to a 2-point /route (see
+            // MapMatchingService.match) — tagging that 'map_matched' claimed
+            // a road-following match that didn't happen for the whole trip.
+            repairReasons.push(routeType === 'matched' ? 'map_matched' : 'map_route_estimated');
           }
         }
       } else if (isGapRecovery || validPoints.length <= 2) {

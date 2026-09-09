@@ -366,3 +366,141 @@ describe('TripPostProcessorService', () => {
   });
 });
 
+// ─── Stage 6: map matching / route reconstruction wiring ─────────────────────
+//
+// MapMatchingService itself is unit-tested in map-matching.service.spec.ts.
+// These tests verify the post-processor correctly consumes its diagnostics:
+// a route that needed a singleton bridge must never be reported as HIGH
+// confidence, an OSRM failure must never clobber the existing route, and
+// re-processing the same trip must not duplicate tags or flip the result.
+
+describe('TripPostProcessorService — map matching wiring', () => {
+  const BASE = new Date('2026-03-18T10:00:00Z');
+  // Mirrors the file's known-good "clean trip" fixture (startSoc 80→60, distanceKm 50,
+  // energyUsedKwh 15 — SOC-preferred energy model reproduces 15 kWh regardless of GPS),
+  // extended with 3 GPS points ~25 km apart / 20 min apart (≈75 km/h, no jump-filter
+  // trip, GPS distance ≈ the preset 50 km so Stage 2 doesn't rewrite it) so the map
+  // matching branch (validPoints.length >= 3) actually runs.
+  const points = [
+    pt(55.0000, 37.00, BASE),
+    pt(55.2246, 37.00, new Date(BASE.getTime() + 1_200_000)),
+    pt(55.4492, 37.00, new Date(BASE.getTime() + 2_400_000)),
+  ];
+
+  function makeMockMapMatching(result: any) {
+    return { match: jest.fn().mockResolvedValue(result) };
+  }
+
+  it('downgrades HIGH reliability to MEDIUM when the route required a singleton bridge', async () => {
+    const trip = makeTrip({
+      startSoc: 80, endSoc: 60, distanceKm: 50, energyUsedKwh: 15,
+      // Must cover the full points range (last point is BASE + 2_400_000 ms) —
+      // otherwise effectivePoints filters the last point out silently, leaving
+      // only 2 valid points and routing into the gap-recovery branch instead
+      // of the validPoints.length >= 3 branch this suite is testing.
+      endTime: new Date(BASE.getTime() + 2_460_000),
+    });
+    const prisma = makePrisma(trip, points);
+    const mapMatching = makeMockMapMatching({
+      polyline: 'xyz', distanceKm: 50, type: 'estimated',
+      segmentCount: 4, singletonBridgeCount: 2, largestGapSeconds: 483,
+      matchedDistanceKm: 15, routedDistanceKm: 35,
+    });
+    const svc = new TripPostProcessorService(prisma as any, mapMatching as any);
+
+    await svc.processTripById('trip-1');
+
+    const saved = prisma._updated[0];
+    // This trip's energy/SOC data alone would score HIGH — the bridge must cap it.
+    expect(saved.reliability).toBe('MEDIUM');
+    expect(saved.repairReason).toContain('route_singleton_bridged(2)');
+    expect(saved.repairReason).toContain('map_route_estimated');
+    expect(saved.repairReason).not.toMatch(/(^|\|)map_matched(\||$)/);
+  });
+
+  it('does not downgrade reliability when the route matched without any bridge', async () => {
+    const trip = makeTrip({
+      startSoc: 80, endSoc: 60, distanceKm: 50, energyUsedKwh: 15,
+      // Must cover the full points range (last point is BASE + 2_400_000 ms) —
+      // otherwise effectivePoints filters the last point out silently, leaving
+      // only 2 valid points and routing into the gap-recovery branch instead
+      // of the validPoints.length >= 3 branch this suite is testing.
+      endTime: new Date(BASE.getTime() + 2_460_000),
+    });
+    const prisma = makePrisma(trip, points);
+    const mapMatching = makeMockMapMatching({
+      polyline: 'xyz', distanceKm: 50, type: 'matched',
+      segmentCount: 1, singletonBridgeCount: 0, largestGapSeconds: 60,
+      matchedDistanceKm: 50, routedDistanceKm: 0,
+    });
+    const svc = new TripPostProcessorService(prisma as any, mapMatching as any);
+
+    await svc.processTripById('trip-1');
+
+    const saved = prisma._updated[0];
+    expect(saved.reliability).toBe('HIGH');
+    expect(saved.repairReason).toContain('map_matched');
+    expect(saved.repairReason).not.toContain('route_singleton_bridged');
+  });
+
+  it('preserves the existing polyline when OSRM is unreachable (no clobbering with empty/wrong data)', async () => {
+    const trip = makeTrip({
+      startSoc: 80, endSoc: 60, distanceKm: 50, energyUsedKwh: 15,
+      // Must cover the full points range (last point is BASE + 2_400_000 ms) —
+      // otherwise effectivePoints filters the last point out silently, leaving
+      // only 2 valid points and routing into the gap-recovery branch instead
+      // of the validPoints.length >= 3 branch this suite is testing.
+      endTime: new Date(BASE.getTime() + 2_460_000),
+    });
+    const prisma = makePrisma(trip, points);
+    const mapMatching = makeMockMapMatching(null);
+    const svc = new TripPostProcessorService(prisma as any, mapMatching as any);
+
+    await svc.processTripById('trip-1');
+
+    const saved = prisma._updated[0];
+    // polyline key must be omitted from the update payload entirely —
+    // a Prisma partial update leaves the existing DB value untouched.
+    expect('polyline' in saved).toBe(false);
+  });
+
+  it('does not duplicate repair tags or change the result across repeated runs', async () => {
+    const trip = makeTrip({
+      startSoc: 80, endSoc: 60, distanceKm: 50, energyUsedKwh: 15,
+      // Must cover the full points range (last point is BASE + 2_400_000 ms) —
+      // otherwise effectivePoints filters the last point out silently, leaving
+      // only 2 valid points and routing into the gap-recovery branch instead
+      // of the validPoints.length >= 3 branch this suite is testing.
+      endTime: new Date(BASE.getTime() + 2_460_000),
+    });
+    const prisma = makePrisma(trip, points);
+    // Make update() persist back onto the same `trip` object, so the second
+    // processTripById() call sees what the first one actually wrote —
+    // the shared makePrisma() helper normally keeps findUnique() static,
+    // which would hide any accumulation bug.
+    prisma.trip.update = jest.fn().mockImplementation(({ data }: any) => {
+      Object.assign(trip, data);
+      prisma._updated.push(data);
+      return Promise.resolve(trip);
+    });
+    const mapMatching = makeMockMapMatching({
+      polyline: 'xyz', distanceKm: 50, type: 'estimated',
+      segmentCount: 4, singletonBridgeCount: 2, largestGapSeconds: 483,
+      matchedDistanceKm: 15, routedDistanceKm: 35,
+    });
+    const svc = new TripPostProcessorService(prisma as any, mapMatching as any);
+
+    await svc.processTripById('trip-1');
+    const firstTags = (trip.repairTags ?? []).map((t: any) => t.tag).sort();
+    const firstReliability = trip.reliability;
+    const firstReason = trip.repairReason;
+
+    await svc.processTripById('trip-1');
+    const secondTags = (trip.repairTags ?? []).map((t: any) => t.tag).sort();
+
+    expect(secondTags).toEqual(firstTags);
+    expect(trip.reliability).toBe(firstReliability);
+    expect(trip.repairReason).toBe(firstReason);
+  });
+});
+
