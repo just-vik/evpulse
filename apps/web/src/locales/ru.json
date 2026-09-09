@@ -539,6 +539,7 @@
     "estimatedCapacityDetected": "Обнаружено",
     "estimatedSoh": "Оценка SoH",
     "insufficient": "Н/Д",
+    "pendingBaseline": "Ожидает baseline",
     "baseline": "Базовая линия",
     "avgBatteryTemp": "Ср. темп. батареи",
     "tipChargingTitle": "Зарядка",

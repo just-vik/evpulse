@@ -237,6 +237,16 @@ export default function BatteryPage() {
   const sohDisplayLabel = isCalibrating
     ? `~${displaySoh.toFixed(0)}%`
     : `${displaySoh.toFixed(1)}%`;
+  // Capacity is a current-state reading — a tilde-prefixed number is still a
+  // useful reference point while calibrating. Degradation is a comparison
+  // against baseline: with no baseline yet there is nothing to compare
+  // against, so "~0.0%" would misleadingly read as "almost no wear" rather
+  // than "not computed yet" — show it as pending instead, not as a number.
+  const degradationDisplayLabel = `${Math.max(0, health?.degradationPercent ?? 0).toFixed(1)}%`;
+  const isDegradationPending = isCalibrating;
+  const capacityDisplayLabel = isCalibrating
+    ? `~${(health?.estimatedCapacityKwh ?? 0).toFixed(1)}`
+    : `${(health?.estimatedCapacityKwh ?? 0).toFixed(1)}`;
   const sohStatus       = health ? getSohStatus(displaySoh) : 'good';
   const sohTone = sohStatus === 'good' ? 'success' : sohStatus === 'warning' ? 'warning' : 'danger';
   const isUnreliable = !!(trend?.hasTrend && (trend.degradationPerMonth ?? 0) > 0.5 && (trend.samples ?? 0) < 500);
@@ -443,8 +453,10 @@ export default function BatteryPage() {
                 <span className="text-xs text-muted-foreground">{t('battery.estimatedCapacity')}</span>
               </div>
               <div className="flex items-baseline gap-1 mt-2">
-                <span className="text-2xl font-bold text-sky-300">{health.estimatedCapacityKwh.toFixed(1)}</span>
-                <span className="text-sm text-muted-foreground">kWh</span>
+                <span className="text-2xl font-bold text-sky-300">
+                  {isLowData ? '—' : capacityDisplayLabel}
+                </span>
+                {!isLowData && <span className="text-sm text-muted-foreground">kWh</span>}
               </div>
             </motion.div>
 
@@ -460,10 +472,18 @@ export default function BatteryPage() {
                 <span className="text-xs text-muted-foreground">{t('battery.degradation')}</span>
               </div>
               <div className="flex items-baseline gap-1 mt-2">
-                <span className={`text-2xl font-bold ${degradationCardColors.value}`}>
-                  {isLowData ? t('battery.insufficient') : Math.max(0, health.degradationPercent).toFixed(1)}
+                <span
+                  className={`font-bold ${degradationCardColors.value} ${
+                    isLowData || isDegradationPending ? 'text-sm leading-tight' : 'text-2xl'
+                  }`}
+                >
+                  {isLowData
+                    ? t('battery.insufficient')
+                    : isDegradationPending
+                      ? t('battery.pendingBaseline')
+                      : degradationDisplayLabel.replace('%', '')}
                 </span>
-                {!isLowData && <span className="text-sm text-muted-foreground">%</span>}
+                {!isLowData && !isDegradationPending && <span className="text-sm text-muted-foreground">%</span>}
               </div>
             </motion.div>
 

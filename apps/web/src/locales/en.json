@@ -535,6 +535,7 @@
     "estimatedCapacityDetected": "Detected",
     "estimatedSoh": "Est. battery health",
     "insufficient": "N/A",
+    "pendingBaseline": "Pending baseline",
     "insufficientForTrend": "not enough data for trend",
     "baseline": "Baseline",
     "avgBatteryTemp": "Avg Battery Temp",

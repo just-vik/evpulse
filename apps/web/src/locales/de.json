@@ -502,6 +502,7 @@
     "estimatedCapacityDetected": "Erkannt",
     "estimatedSoh": "Geschätzte Batteriegüte",
     "insufficient": "N/V",
+    "pendingBaseline": "Wartet auf Baseline",
     "baseline": "Basislinie",
     "avgBatteryTemp": "Ø Akkutemperatur",
     "tipChargingTitle": "Laden",

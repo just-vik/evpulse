@@ -221,30 +221,57 @@ export default function AnalyticsScreen() {
         ) : health.isError ? (
           <ErrorState compact message={t('insights.errorHealth')} onRetry={() => health.refetch()} />
         ) : health.data ? (
-          <>
-            <MetricRow
-              label={t('insights.stateOfHealth')}
-              value={health.data.sohPercent.toFixed(1)}
-              unit="%"
-              color={
-                health.data.sohPercent > 90
-                  ? color.semantic.success
-                  : health.data.sohPercent > 80
-                    ? color.semantic.warning
-                    : color.semantic.danger
-              }
-            />
-            <MetricRow
-              label={t('insights.capacityLoss')}
-              value={health.data.degradationPercent.toFixed(1)}
-              unit="%"
-            />
-            <MetricRow label={t('insights.estCapacity')} value={health.data.estimatedCapacityKwh.toFixed(1)} unit="kWh" />
-            <MetricRow label={t('insights.nominalCapacity')} value={health.data.nominalCapacityKwh.toFixed(1)} unit="kWh" />
-            <Text style={styles.caption}>
-              {t('insights.basedOnCycles', { count: health.data.cycles ?? health.data.qualifyingChargeSessions })}
-            </Text>
-          </>
+          (() => {
+            const h = health.data;
+            // dataQuality === 'learning' means no baseline is locked yet — the
+            // SoH/degradation/capacity numbers below are provisional, derived
+            // from whatever charging sessions have been seen so far. lowData
+            // means confidence is too low even for a provisional number.
+            const isCalibrating = h.dataQuality === 'learning';
+            const isLowData     = h.lowData;
+            const tilde = (v: string) => (isCalibrating ? `~${v}` : v);
+            // Degradation is a comparison against a baseline that doesn't exist
+            // yet while calibrating — "~0.0%" would misleadingly read as "almost
+            // no wear" rather than "not computed yet", so show it as pending
+            // instead of a tilde-prefixed number (unlike SoH/capacity, which are
+            // current-state readings and stay useful even before baseline).
+            const isDegradationPending = isCalibrating && !isLowData;
+            return (
+              <>
+                <MetricRow
+                  label={t(isCalibrating ? 'insights.estStateOfHealth' : 'insights.stateOfHealth')}
+                  value={isLowData ? '—' : tilde(h.sohPercent.toFixed(1))}
+                  unit={isLowData ? '' : '%'}
+                  color={
+                    h.sohPercent > 90
+                      ? color.semantic.success
+                      : h.sohPercent > 80
+                        ? color.semantic.warning
+                        : color.semantic.danger
+                  }
+                />
+                <MetricRow
+                  label={t('insights.capacityLoss')}
+                  value={isLowData ? '—' : isDegradationPending ? t('insights.pendingBaseline') : tilde(h.degradationPercent.toFixed(1))}
+                  unit={isLowData || isDegradationPending ? '' : '%'}
+                />
+                <MetricRow
+                  label={t('insights.estCapacity')}
+                  value={isLowData ? '—' : tilde(h.estimatedCapacityKwh.toFixed(1))}
+                  unit={isLowData ? '' : 'kWh'}
+                />
+                <MetricRow label={t('insights.nominalCapacity')} value={h.nominalCapacityKwh.toFixed(1)} unit="kWh" />
+                <Text style={styles.caption}>
+                  {t('insights.basedOnCycles', { count: h.cycles ?? h.qualifyingChargeSessions })}
+                </Text>
+                {isCalibrating && h.chargesNeededForHighBaseline > 0 && (
+                  <Text style={styles.caption}>
+                    {t('insights.needMoreChargesForBaseline', { count: h.chargesNeededForHighBaseline })}
+                  </Text>
+                )}
+              </>
+            );
+          })()
         ) : (
           <Text style={styles.muted}>{t('insights.noHealthData')}</Text>
         )}

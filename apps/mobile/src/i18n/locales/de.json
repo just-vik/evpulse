@@ -179,6 +179,8 @@
     "subtitle": "Batterie · Effizienz · Laden",
     "batteryHealth": "Batteriezustand",
     "stateOfHealth": "Gesundheitszustand",
+    "estStateOfHealth": "Vorl. Gesundheitszustand",
+    "pendingBaseline": "Wartet auf Baseline",
     "capacityLoss": "Kapazitätsverlust",
     "estCapacity": "Geschätzte Kapazität",
     "nominalCapacity": "Nennkapazität",
@@ -204,7 +206,9 @@
     "samples_one": "{{count}} Messwert",
     "samples_other": "{{count}} Messwerte",
     "basedOnCycles_one": "{{count}} Ladezyklus berücksichtigt",
-    "basedOnCycles_other": "{{count}} Ladezyklen berücksichtigt"
+    "basedOnCycles_other": "{{count}} Ladezyklen berücksichtigt",
+    "needMoreChargesForBaseline_one": "Noch {{count}} vollständiger Ladevorgang nötig, um diese Schätzung zu bestätigen",
+    "needMoreChargesForBaseline_other": "Noch {{count}} vollständige Ladevorgänge nötig, um diese Schätzung zu bestätigen"
   },
   "more": {
     "title": "Mehr",

@@ -183,6 +183,8 @@
     "subtitle": "Батарея · Эффективность · Зарядка",
     "batteryHealth": "Состояние батареи",
     "stateOfHealth": "Состояние здоровья",
+    "estStateOfHealth": "Предварительная оценка SoH",
+    "pendingBaseline": "Ожидает baseline",
     "capacityLoss": "Потеря ёмкости",
     "estCapacity": "Расчётная ёмкость",
     "nominalCapacity": "Номинальная ёмкость",
@@ -212,7 +214,11 @@
     "basedOnCycles_one": "{{count}} цикл зарядки учтён",
     "basedOnCycles_few": "{{count}} цикла зарядки учтено",
     "basedOnCycles_many": "{{count}} циклов зарядки учтено",
-    "basedOnCycles_other": "{{count}} цикла зарядки учтено"
+    "basedOnCycles_other": "{{count}} цикла зарядки учтено",
+    "needMoreChargesForBaseline_one": "Нужна ещё {{count}} полная зарядка для подтверждения оценки",
+    "needMoreChargesForBaseline_few": "Нужно ещё {{count}} полные зарядки для подтверждения оценки",
+    "needMoreChargesForBaseline_many": "Нужно ещё {{count}} полных зарядок для подтверждения оценки",
+    "needMoreChargesForBaseline_other": "Нужно ещё {{count}} полной зарядки для подтверждения оценки"
   },
   "more": {
     "title": "Ещё",

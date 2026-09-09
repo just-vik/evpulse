@@ -179,6 +179,8 @@
     "subtitle": "Battery · Efficiency · Charging",
     "batteryHealth": "Battery Health",
     "stateOfHealth": "State of Health",
+    "estStateOfHealth": "Est. state of health",
+    "pendingBaseline": "Pending baseline",
     "capacityLoss": "Capacity loss",
     "estCapacity": "Est. capacity",
     "nominalCapacity": "Nominal capacity",
@@ -204,7 +206,9 @@
     "samples_one": "{{count}} sample",
     "samples_other": "{{count}} samples",
     "basedOnCycles_one": "Based on {{count}} charge cycle",
-    "basedOnCycles_other": "Based on {{count}} charge cycles"
+    "basedOnCycles_other": "Based on {{count}} charge cycles",
+    "needMoreChargesForBaseline_one": "{{count}} more full charge needed to confirm this estimate",
+    "needMoreChargesForBaseline_other": "{{count}} more full charges needed to confirm this estimate"
   },
   "more": {
     "title": "More",
