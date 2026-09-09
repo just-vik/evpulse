@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MapMatchingService } from '../maps/map-matching.service';
 import { GeocodingService } from '../geocoding/geocoding.service';
 import { appendRepairTags, RepairTag } from './repair-tag.utils';
+import { validateOsrmGeometry } from './osrm-geometry-validation.util';
 
 /**
  * TripPostProcessorService — 5-stage repair + scoring pipeline for completed trips.
@@ -849,45 +850,69 @@ export class TripPostProcessorService {
           validPoints.map(p => ({ lat: p.lat, lon: p.lon, timestamp: p.ts })),
         );
         if (result) {
-          matchedPolyline = result.polyline;
-          routeType       = result.type;
-
           // A route stitched across a real telemetry gap via a 2-point OSRM
           // /route guess (bridged singleton) is road-network guesswork, not
           // a verified trace through that stretch — never let it carry HIGH
           // confidence, even though the rest of the trip's metrics may be fine.
+          // This reflects general GPS-sparsity data quality regardless of
+          // whether the geometry check below ends up trusting this result.
           if (result.singletonBridgeCount > 0) {
             repairReasons.push(`route_singleton_bridged(${result.singletonBridgeCount})`);
             if (reliability === 'HIGH') reliability = 'MEDIUM';
           }
 
-          // Distance priority: OSRM > odometer/hybrid > GPS haversine
-          // OSRM result is most accurate when GPS coverage is good (≥10 points).
-          // For sparse GPS (odometer/hybrid was used), only accept OSRM if it agrees
-          // within 15% of the odometer reference (avoids undercount from partial matches).
-          const usedNonGps = repairReasons.some(r =>
-            r.startsWith('distance_from_odometer') || r.startsWith('distance_hybrid'),
-          );
-          const reference  = odometerDistKm ?? distanceKm;
-          const osrmOk = reference
-            ? result.distanceKm >= reference * 0.85 && result.distanceKm <= reference * 1.30
-            : result.distanceKm > 0;
+          // P0.1: an OSRM result whose endpoints don't land near the trip's
+          // actual first/last GPS fix is a mis-snap onto a road network that
+          // doesn't cover where the car really was (this OSRM instance only
+          // loads Hessen + a buffer) — reject it outright rather than persist
+          // a plausible-looking but false route. Widen the threshold for
+          // sparse/bridged results, since a bridge's shared boundary point is
+          // inherently less precise, but never past the 1km hard ceiling.
+          const isSparseOrBridged = result.singletonBridgeCount > 0 || validPoints.length < 10;
+          const geometryCheck = validateOsrmGeometry({
+            polyline: result.polyline,
+            firstValidGpsPoint: validPoints[0],
+            lastValidGpsPoint: validPoints[validPoints.length - 1],
+            isSparseOrBridged,
+          });
 
-          if (osrmOk) {
-            // Full GPS coverage: OSRM is ground truth
-            if (!usedNonGps || validPoints.length >= 10) {
-              matchedDistanceKm = result.distanceKm;
+          if (!geometryCheck.accepted) {
+            // Idempotent — validateOsrmGeometry is a pure function of
+            // (polyline, endpoints), so a re-run with the same OSRM answer
+            // produces the identical tag string and appendRepairTags dedupes.
+            repairReasons.push(`osrm_geometry_rejected:${geometryCheck.rejectionReason}`);
+          } else {
+            matchedPolyline = result.polyline;
+            routeType       = result.type;
+
+            // Distance priority: OSRM > odometer/hybrid > GPS haversine
+            // OSRM result is most accurate when GPS coverage is good (≥10 points).
+            // For sparse GPS (odometer/hybrid was used), only accept OSRM if it agrees
+            // within 15% of the odometer reference (avoids undercount from partial matches).
+            const usedNonGps = repairReasons.some(r =>
+              r.startsWith('distance_from_odometer') || r.startsWith('distance_hybrid'),
+            );
+            const reference  = odometerDistKm ?? distanceKm;
+            const osrmOk = reference
+              ? result.distanceKm >= reference * 0.85 && result.distanceKm <= reference * 1.30
+              : result.distanceKm > 0;
+
+            if (osrmOk) {
+              // Full GPS coverage: OSRM is ground truth
+              if (!usedNonGps || validPoints.length >= 10) {
+                matchedDistanceKm = result.distanceKm;
+              }
+              // Sparse GPS: OSRM is plausible → use as hybrid with odometer
+              else if (odometerDistKm) {
+                matchedDistanceKm = Math.round((result.distanceKm + odometerDistKm) / 2 * 10) / 10;
+              }
+              // Only tag 'map_matched' when the result actually came from a
+              // real trace match. A merged result can end up 'estimated' when
+              // any bridged sub-segment fell back to a 2-point /route (see
+              // MapMatchingService.match) — tagging that 'map_matched' claimed
+              // a road-following match that didn't happen for the whole trip.
+              repairReasons.push(routeType === 'matched' ? 'map_matched' : 'map_route_estimated');
             }
-            // Sparse GPS: OSRM is plausible → use as hybrid with odometer
-            else if (odometerDistKm) {
-              matchedDistanceKm = Math.round((result.distanceKm + odometerDistKm) / 2 * 10) / 10;
-            }
-            // Only tag 'map_matched' when the result actually came from a
-            // real trace match. A merged result can end up 'estimated' when
-            // any bridged sub-segment fell back to a 2-point /route (see
-            // MapMatchingService.match) — tagging that 'map_matched' claimed
-            // a road-following match that didn't happen for the whole trip.
-            repairReasons.push(routeType === 'matched' ? 'map_matched' : 'map_route_estimated');
           }
         }
       } else if (isGapRecovery || validPoints.length <= 2) {
@@ -905,9 +930,25 @@ export class TripPostProcessorService {
             { lat: endLat,   lon: endLon   },
           ]);
           if (result) {
-            matchedPolyline = result.polyline;
-            routeType       = result.type;   // always 'estimated' for 2-point route
-            // For gap-recovery, keep the odometer-based distanceKm as-is
+            // P0.1: same endpoint check as the trace-matched branch above.
+            // Weaker here (the query points ARE these same coordinates, so
+            // OSRM's own snap radius rarely drifts far) but still a real
+            // safety net if this OSRM instance's road network doesn't cover
+            // the region at all and silently snaps to a distant edge.
+            const geometryCheck = validateOsrmGeometry({
+              polyline: result.polyline,
+              firstValidGpsPoint: { lat: startLat, lon: startLon },
+              lastValidGpsPoint:  { lat: endLat,   lon: endLon   },
+              isSparseOrBridged: true,
+            });
+
+            if (!geometryCheck.accepted) {
+              repairReasons.push(`osrm_geometry_rejected:${geometryCheck.rejectionReason}`);
+            } else {
+              matchedPolyline = result.polyline;
+              routeType       = result.type;   // always 'estimated' for 2-point route
+              // For gap-recovery, keep the odometer-based distanceKm as-is
+            }
           }
         }
       }

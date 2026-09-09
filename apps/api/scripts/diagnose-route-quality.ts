@@ -41,6 +41,7 @@
 import { PrismaClient } from '@prisma/client';
 import { MapMatchingService } from '../src/maps/map-matching.service';
 import { resolveRouteQuality, RouteQuality } from '../src/trips/route-quality.util';
+import { validateOsrmGeometry } from '../src/trips/osrm-geometry-validation.util';
 
 // Instantiated lazily inside main() (CLI-only) rather than at module scope —
 // constructing PrismaClient at import time breaks importing buildValidPoints()
@@ -111,24 +112,10 @@ export function buildValidPoints(rawPoints: { latitude: number | null; longitude
   return { nonInterpolatedRows: nonInterpolated.length, invalidCount, jumpCount, validPoints, largestGapSeconds };
 }
 
-// ── Polyline decode (duplicated from map-matching.service.ts — unexported there) ──
-
-function decodePoly(encoded: string): Array<[number, number]> {
-  const points: Array<[number, number]> = [];
-  let idx = 0, lat = 0, lng = 0;
-  while (idx < encoded.length) {
-    let b, shift = 0, result = 0;
-    do { b = encoded.charCodeAt(idx++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
-    lat += (result & 1) ? ~(result >> 1) : result >> 1;
-    shift = 0; result = 0;
-    do { b = encoded.charCodeAt(idx++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
-    lng += (result & 1) ? ~(result >> 1) : result >> 1;
-    points.push([lat / 1e5, lng / 1e5]);
-  }
-  return points;
-}
-
-const ENDPOINT_TOLERANCE_KM = 0.3; // 300 m
+// Polyline decoding and endpoint-distance math now live in
+// osrm-geometry-validation.util.ts (validateOsrmGeometry) — this script calls
+// that directly so its report reflects the actual production decision rather
+// than a separately maintained approximation of it.
 
 // ── Candidate selection (only used when no explicit trip IDs are given) ────
 
@@ -242,36 +229,43 @@ async function diagnoseTrip(tripId: string) {
     reconstructedDistancePercent: reconstructedDistancePercent ?? 100,
   });
 
+  // P0.1: run the SAME geometry acceptance check trip-post-processor.service.ts
+  // now runs before persisting — this is the actual production decision, not
+  // an approximation of it. isSparseOrBridged mirrors the production call site.
+  const isSparseOrBridged = (result?.singletonBridgeCount ?? 0) > 0 || validPoints.length < 10;
+  const geometry = result
+    ? validateOsrmGeometry({
+        polyline: result.polyline,
+        firstValidGpsPoint: validPoints[0],
+        lastValidGpsPoint: validPoints[validPoints.length - 1],
+        isSparseOrBridged,
+      })
+    : null;
+
   // Mirror trip-post-processor's osrmOk gate: OSRM's raw distance is only
   // ever applied when it agrees with the odometer-preferred reference within
-  // 15–30% — otherwise distanceKm stays exactly as it is today. Reporting
-  // result.distanceKm alone (as "after") would misleadingly suggest distance
-  // changes on every trip, when in production it usually doesn't.
+  // 15–30% AND the geometry itself was accepted — a rejected geometry means
+  // we don't trust ANY part of that OSRM answer, distance included (P0.1).
   const usedNonGps = /distance_from_odometer|distance_hybrid/.test(before.repairReason ?? '');
   const reference = before.distanceKm;
   const osrmOk = result
     ? (reference ? result.distanceKm >= reference * 0.85 && result.distanceKm <= reference * 1.30 : result.distanceKm > 0)
     : false;
   let finalDistanceKmPreview = before.distanceKm;
-  if (result && osrmOk) {
+  if (result && osrmOk && geometry?.accepted) {
     finalDistanceKmPreview = (!usedNonGps || validPoints.length >= 10)
       ? result.distanceKm
       : (reference != null ? Math.round((result.distanceKm + reference) / 2 * 10) / 10 : result.distanceKm);
   }
 
-  let startPreservedKm: number | null = null;
-  let endPreservedKm: number | null = null;
-  if (result) {
-    const decoded = decodePoly(result.polyline);
-    if (decoded.length >= 1) {
-      const [flat, flon] = decoded[0];
-      const [llat, llon] = decoded[decoded.length - 1];
-      startPreservedKm = Math.round(haversineKm(validPoints[0].lat, validPoints[0].lon, flat, flon) * 1000) / 1000;
-      endPreservedKm = Math.round(
-        haversineKm(validPoints[validPoints.length - 1].lat, validPoints[validPoints.length - 1].lon, llat, llon) * 1000,
-      ) / 1000;
-    }
-  }
+  // routeQuality already treats UNAVAILABLE/PARTIAL correctly for sparse/gappy
+  // trips, but knows nothing about geometry acceptance — a trip whose OSRM
+  // result was rejected for landing in the wrong region must never be
+  // reported better than PARTIAL, and needs its own explicit "needs
+  // attention" classification distinct from ordinary sparse-GPS PARTIAL.
+  const finalRouteQuality: RouteQuality = geometry && !geometry.accepted
+    ? (routeQuality === 'UNAVAILABLE' ? 'UNAVAILABLE' : 'PARTIAL')
+    : routeQuality;
 
   return {
     tripId,
@@ -295,11 +289,20 @@ async function diagnoseTrip(tripId: string) {
       reconstructedDistancePercent,
     } : null,
     osrmError,
-    routeQuality,
-    startPreservedKm,
-    endPreservedKm,
-    startPreserved: startPreservedKm != null ? startPreservedKm <= ENDPOINT_TOLERANCE_KM : null,
-    endPreserved: endPreservedKm != null ? endPreservedKm <= ENDPOINT_TOLERANCE_KM : null,
+    routeQuality: finalRouteQuality,
+    geometry: geometry ? {
+      accepted: geometry.accepted,
+      rejectionReason: geometry.rejectionReason,
+      startEndpointErrorMeters: geometry.startEndpointErrorMeters,
+      endEndpointErrorMeters: geometry.endEndpointErrorMeters,
+      startEndpointErrorKm: geometry.startEndpointErrorMeters != null ? Math.round(geometry.startEndpointErrorMeters / 100) / 10 : null,
+      endEndpointErrorKm: geometry.endEndpointErrorMeters != null ? Math.round(geometry.endEndpointErrorMeters / 100) / 10 : null,
+      thresholdMeters: geometry.thresholdMeters,
+      // polyline would actually be persisted only if BOTH distance and
+      // geometry checks pass — matches trip-post-processor's combined gate.
+      polylineWouldPersist: geometry.accepted,
+    } : null,
+    needsAttention: geometry != null && !geometry.accepted,
   };
 }
 
@@ -333,15 +336,27 @@ async function main() {
     beforeRouteType: r.before?.routeType ?? '-',
     afterRouteType: r.after?.type ?? (r.osrmError ? 'ERROR' : 'n/a'),
     routeQuality: r.routeQuality,
-    startOk: r.startPreserved,
-    endOk: r.endPreserved,
+    geomAccepted: r.geometry?.accepted ?? (r.after ? 'n/a' : '-'),
+    geomRejectReason: r.geometry?.rejectionReason ?? '-',
+    startErrKm: r.geometry?.startEndpointErrorKm ?? '-',
+    endErrKm: r.geometry?.endEndpointErrorKm ?? '-',
   })));
 
-  const safe = rows.filter(r => r.after && r.startPreserved !== false && r.endPreserved !== false && !r.osrmError);
-  const needsAttention = rows.filter(r => !safe.includes(r));
+  // P0.1: a trip is "safe to backfill" only when it produced no OSRM error
+  // AND (it had no OSRM result at all — nothing to apply — OR its geometry
+  // was actually accepted by validateOsrmGeometry). A rejected geometry is
+  // the correct, working outcome for an out-of-coverage trip like
+  // Liempde → Düsseldorf — it belongs in "rejected, correctly excluded",
+  // not "needs attention" (that label is reserved for genuine surprises:
+  // OSRM errors, or an accepted-but-still-endpoint-mismatched result, which
+  // validateOsrmGeometry existing means should no longer be possible).
+  const rejectedByDesign = rows.filter(r => r.geometry && !r.geometry.accepted);
+  const safe = rows.filter(r => !r.osrmError && (!r.geometry || r.geometry.accepted));
+  const needsAttention = rows.filter(r => r.osrmError);
 
   console.log(`\nSafe to apply real backfill (${safe.length}): ${safe.map(r => r.tripId).join(', ') || '(none)'}`);
-  console.log(`Needs attention before backfill (${needsAttention.length}): ${needsAttention.map(r => r.tripId).join(', ') || '(none)'}`);
+  console.log(`Correctly rejected by P0.1 geometry validation (${rejectedByDesign.length}): ${rejectedByDesign.map(r => `${r.tripId}[${r.geometry.rejectionReason}]`).join(', ') || '(none)'}`);
+  console.log(`Needs attention — OSRM call failed, investigate (${needsAttention.length}): ${needsAttention.map(r => r.tripId).join(', ') || '(none)'}`);
 
   await prisma.$disconnect();
 }

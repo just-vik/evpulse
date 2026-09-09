@@ -43,6 +43,26 @@ function pt(lat: number, lon: number, ts: Date, power = 0): any {
   return { latitude: lat, longitude: lon, timestamp: ts, power };
 }
 
+/** Google polyline5 encoder — for building realistic mock OSRM results whose
+ *  decoded endpoints can be checked by the P0.1 geometry validator. */
+function encodePolyline(points: Array<[number, number]>): string {
+  let out = '', prevLat = 0, prevLng = 0;
+  const encodeValue = (v: number) => {
+    let n = v < 0 ? ~(v << 1) : v << 1;
+    let s = '';
+    while (n >= 0x20) { s += String.fromCharCode(((0x20 | (n & 0x1f)) + 63)); n >>= 5; }
+    s += String.fromCharCode(n + 63);
+    return s;
+  };
+  for (const [lat, lng] of points) {
+    const iLat = Math.round(lat * 1e5);
+    const iLng = Math.round(lng * 1e5);
+    out += encodeValue(iLat - prevLat) + encodeValue(iLng - prevLng);
+    prevLat = iLat; prevLng = iLng;
+  }
+  return out;
+}
+
 function makePrisma(trip: any, points: any[], telemetryPoints: any[] = []) {
   const updated: any[] = [];
   const telemetryFindFirst = jest
@@ -401,8 +421,12 @@ describe('TripPostProcessorService — map matching wiring', () => {
       endTime: new Date(BASE.getTime() + 2_460_000),
     });
     const prisma = makePrisma(trip, points);
+    // Polyline endpoints exactly match the fixture's first/last GPS point —
+    // must pass P0.1 geometry validation for this test to isolate the
+    // reliability-downgrade behavior it's actually testing.
     const mapMatching = makeMockMapMatching({
-      polyline: 'xyz', distanceKm: 50, type: 'estimated',
+      polyline: encodePolyline([[55.0000, 37.00], [55.4492, 37.00]]),
+      distanceKm: 50, type: 'estimated',
       segmentCount: 4, singletonBridgeCount: 2, largestGapSeconds: 483,
       matchedDistanceKm: 15, routedDistanceKm: 35,
     });
@@ -416,6 +440,7 @@ describe('TripPostProcessorService — map matching wiring', () => {
     expect(saved.repairReason).toContain('route_singleton_bridged(2)');
     expect(saved.repairReason).toContain('map_route_estimated');
     expect(saved.repairReason).not.toMatch(/(^|\|)map_matched(\||$)/);
+    expect(saved.repairReason).not.toContain('osrm_geometry_rejected');
   });
 
   it('does not downgrade reliability when the route matched without any bridge', async () => {
@@ -429,7 +454,8 @@ describe('TripPostProcessorService — map matching wiring', () => {
     });
     const prisma = makePrisma(trip, points);
     const mapMatching = makeMockMapMatching({
-      polyline: 'xyz', distanceKm: 50, type: 'matched',
+      polyline: encodePolyline([[55.0000, 37.00], [55.4492, 37.00]]),
+      distanceKm: 50, type: 'matched',
       segmentCount: 1, singletonBridgeCount: 0, largestGapSeconds: 60,
       matchedDistanceKm: 50, routedDistanceKm: 0,
     });
@@ -441,6 +467,84 @@ describe('TripPostProcessorService — map matching wiring', () => {
     expect(saved.reliability).toBe('HIGH');
     expect(saved.repairReason).toContain('map_matched');
     expect(saved.repairReason).not.toContain('route_singleton_bridged');
+    expect(saved.repairReason).not.toContain('osrm_geometry_rejected');
+  });
+
+  it('rejects OSRM geometry whose start endpoint is far from the trip\'s actual first GPS fix', async () => {
+    const trip = makeTrip({
+      startSoc: 80, endSoc: 60, distanceKm: 50, energyUsedKwh: 15,
+      endTime: new Date(BASE.getTime() + 2_460_000),
+    });
+    const prisma = makePrisma(trip, points);
+    // Start point offset by ~2° latitude (≈222 km) from the fixture's real
+    // first fix (55.0000, 37.00) — end point is correct.
+    const mapMatching = makeMockMapMatching({
+      polyline: encodePolyline([[57.0000, 37.00], [55.4492, 37.00]]),
+      distanceKm: 50, type: 'matched',
+      segmentCount: 1, singletonBridgeCount: 0, largestGapSeconds: 60,
+      matchedDistanceKm: 50, routedDistanceKm: 0,
+    });
+    const svc = new TripPostProcessorService(prisma as any, mapMatching as any);
+
+    await svc.processTripById('trip-1');
+
+    const saved = prisma._updated[0];
+    expect(saved.repairReason).toContain('osrm_geometry_rejected:start_endpoint_too_far');
+    expect(saved.repairReason).not.toContain('map_matched');
+    expect(saved.repairReason).not.toContain('map_route_estimated');
+    expect('polyline' in saved).toBe(false);
+    // distanceKm must stay exactly what Stage 1/2 already computed — never
+    // adopt this rejected result's distance either.
+    expect(saved.distanceKm).toBe(trip.distanceKm);
+  });
+
+  it('rejects OSRM geometry whose end endpoint is far from the trip\'s actual last GPS fix', async () => {
+    const trip = makeTrip({
+      startSoc: 80, endSoc: 60, distanceKm: 50, energyUsedKwh: 15,
+      endTime: new Date(BASE.getTime() + 2_460_000),
+    });
+    const prisma = makePrisma(trip, points);
+    // End point offset by ~2° latitude (≈222 km) from the fixture's real
+    // last fix (55.4492, 37.00) — start point is correct.
+    const mapMatching = makeMockMapMatching({
+      polyline: encodePolyline([[55.0000, 37.00], [53.0000, 37.00]]),
+      distanceKm: 50, type: 'matched',
+      segmentCount: 1, singletonBridgeCount: 0, largestGapSeconds: 60,
+      matchedDistanceKm: 50, routedDistanceKm: 0,
+    });
+    const svc = new TripPostProcessorService(prisma as any, mapMatching as any);
+
+    await svc.processTripById('trip-1');
+
+    const saved = prisma._updated[0];
+    expect(saved.repairReason).toContain('osrm_geometry_rejected:end_endpoint_too_far');
+    expect('polyline' in saved).toBe(false);
+    expect(saved.distanceKm).toBe(trip.distanceKm);
+  });
+
+  it('rejects an out-of-coverage mis-snap 100+ km away (Liempde → Düsseldorf style)', async () => {
+    const trip = makeTrip({
+      startSoc: 80, endSoc: 60, distanceKm: 50, energyUsedKwh: 15,
+      endTime: new Date(BASE.getTime() + 2_460_000),
+    });
+    const prisma = makePrisma(trip, points);
+    // Both endpoints snapped ~100+ km away — simulates OSRM silently
+    // returning a route on a road network that doesn't cover this trip's
+    // actual region (this OSRM instance only loads Hessen + a buffer).
+    const mapMatching = makeMockMapMatching({
+      polyline: encodePolyline([[56.0000, 39.00], [54.0000, 41.00]]),
+      distanceKm: 50, type: 'matched',
+      segmentCount: 1, singletonBridgeCount: 0, largestGapSeconds: 60,
+      matchedDistanceKm: 50, routedDistanceKm: 0,
+    });
+    const svc = new TripPostProcessorService(prisma as any, mapMatching as any);
+
+    await svc.processTripById('trip-1');
+
+    const saved = prisma._updated[0];
+    expect(saved.repairReason).toContain('osrm_geometry_rejected:start_endpoint_too_far');
+    expect('polyline' in saved).toBe(false);
+    expect(saved.distanceKm).toBe(trip.distanceKm);
   });
 
   it('preserves the existing polyline when OSRM is unreachable (no clobbering with empty/wrong data)', async () => {
@@ -483,6 +587,9 @@ describe('TripPostProcessorService — map matching wiring', () => {
       prisma._updated.push(data);
       return Promise.resolve(trip);
     });
+    // 'xyz' is too short to decode into 2 coordinates — this doubles as an
+    // idempotency check for the P0.1 rejection path (osrm_geometry_rejected
+    // must not duplicate/change across re-runs either).
     const mapMatching = makeMockMapMatching({
       polyline: 'xyz', distanceKm: 50, type: 'estimated',
       segmentCount: 4, singletonBridgeCount: 2, largestGapSeconds: 483,
@@ -494,6 +601,7 @@ describe('TripPostProcessorService — map matching wiring', () => {
     const firstTags = (trip.repairTags ?? []).map((t: any) => t.tag).sort();
     const firstReliability = trip.reliability;
     const firstReason = trip.repairReason;
+    expect(firstTags).toContain('osrm_geometry_rejected:invalid_polyline');
 
     await svc.processTripById('trip-1');
     const secondTags = (trip.repairTags ?? []).map((t: any) => t.tag).sort();
