@@ -1,7 +1,9 @@
 'use client'
 
 import React, { useEffect, useRef, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import 'maplibre-gl/dist/maplibre-gl.css'
+import { registerPmtilesProtocol, buildDarkStyle } from '@/lib/basemap'
 
 // Decode Google-encoded polyline → [lat, lng] pairs
 function decodePolyline(encoded: string): [number, number][] {
@@ -19,20 +21,6 @@ function decodePolyline(encoded: string): [number, number][] {
   return coords
 }
 
-// Dark raster tile style using CartoDB (free, no token required)
-const DARK_STYLE = {
-  version: 8 as const,
-  sources: {
-    carto: {
-      type: 'raster' as const,
-      tiles: ['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png'],
-      tileSize: 256,
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
-    },
-  },
-  layers: [{ id: 'carto-dark', type: 'raster' as const, source: 'carto' }],
-}
-
 interface Props {
   polyline: string
   repairReason?: string
@@ -42,6 +30,7 @@ interface Props {
 export default function TripMapGL({ polyline, repairReason, height = 160 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
+  const { i18n } = useTranslation()
 
   // Decode once per polyline change — avoids re-parsing on every parent render.
   const lnglats = useMemo<[number, number][]>(() => {
@@ -60,12 +49,13 @@ export default function TripMapGL({ polyline, repairReason, height = 160 }: Prop
     ;(async () => {
       try {
         const maplibregl = (await import('maplibre-gl')).default
+        await registerPmtilesProtocol(maplibregl)
 
         if (cancelled || !containerRef.current) return
 
         const map = new maplibregl.Map({
           container: containerRef.current,
-          style:     DARK_STYLE as any,
+          style:     buildDarkStyle(i18n.language) as any,
           interactive:        true,
           attributionControl: false,
           logoPosition:       'bottom-right',
@@ -159,7 +149,7 @@ export default function TripMapGL({ polyline, repairReason, height = 160 }: Prop
       mapRef.current?.remove()
       mapRef.current = null
     }
-  }, [lnglats, repairReason])
+  }, [lnglats, repairReason, i18n.language])
 
   if (lnglats.length === 0) {
     return (

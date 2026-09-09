@@ -12,6 +12,15 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/api') ||
     pathname.startsWith('/.well-known') ||
     pathname.startsWith('/icons') ||
+    // Self-hosted map assets (basemap glyphs/sprites/PMTiles vector tiles) —
+    // generic OSM-derived data, not user-specific. Must stay public: MapLibre's
+    // internal fetch()/range-request calls for these don't go through the
+    // app's Bearer-token refresh flow, so gating them on the access_token
+    // cookie risks silently breaking map rendering the moment that cookie
+    // (a separate mechanism from the API's Bearer token) goes stale.
+    pathname.startsWith('/fonts') ||
+    pathname.startsWith('/sprites') ||
+    pathname.startsWith('/maps') ||
     pathname === '/manifest.json' ||
     pathname === '/favicon.ico' ||
     pathname === '/favicon.svg' ||

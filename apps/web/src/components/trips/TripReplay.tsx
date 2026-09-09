@@ -4,8 +4,10 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Pause, RotateCcw, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { apiClient } from '@/lib/api';
 import { useAuthStore } from '@/stores/authStore';
+import { registerPmtilesProtocol, buildDarkStyle } from '@/lib/basemap';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 type TripPoint = {
@@ -19,19 +21,6 @@ type TripPoint = {
 
 type POIType = 'slow' | 'regen' | 'boost';
 interface POI { idx: number; type: POIType; lat: number; lng: number }
-
-const DARK_STYLE = {
-  version: 8 as const,
-  sources: {
-    carto: {
-      type: 'raster' as const,
-      tiles: ['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png'],
-      tileSize: 256,
-      attribution: '© OpenStreetMap © CARTO',
-    },
-  },
-  layers: [{ id: 'base', type: 'raster' as const, source: 'carto' }],
-};
 
 function lerp(a: number, b: number, t: number) { return a + (b - a) * t; }
 
@@ -89,6 +78,7 @@ interface Props {
 
 export function TripReplay({ tripId, onClose }: Props) {
   const { accessToken } = useAuthStore();
+  const { i18n } = useTranslation();
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['trip-points', tripId],
@@ -138,6 +128,7 @@ export function TripReplay({ tripId, onClose }: Props) {
     (async () => {
       try {
         const maplibregl = (await import('maplibre-gl')).default;
+        await registerPmtilesProtocol(maplibregl);
         if (cancelled || mapRef.current) return;
 
         const coords: [number, number][] = points.map(p => [p.lng, p.lat]);
@@ -150,7 +141,7 @@ export function TripReplay({ tripId, onClose }: Props) {
 
         const map = new maplibregl.Map({
           container: mapContainerRef.current!,
-          style: DARK_STYLE,
+          style: buildDarkStyle(i18n.language) as any,
           bounds,
           fitBoundsOptions: { padding: 32 },
           attributionControl: false,
@@ -214,7 +205,7 @@ export function TripReplay({ tripId, onClose }: Props) {
       markerRef.current = null;
       markerElRef.current = null;
     };
-  }, [points.length, pois]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [points.length, pois, i18n.language]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Sync frame → map marker + progress line ───────────────────────────────
   useEffect(() => {

@@ -54,6 +54,12 @@ build/
 !**/migrations/**/*.sql
 !**/migrations_manual/**/*.sql
 
+# Locally-generated map data (e.g. self-hosted PMTiles basemap extract) — large
+# binary, regenerable from the public Protomaps build bucket, never committed.
+/data/
+apps/web/public/maps/
+/.tools/
+
 # OS
 Thumbs.db
 
