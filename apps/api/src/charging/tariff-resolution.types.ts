@@ -15,7 +15,15 @@ export type TariffSource =
   | 'vehicle_settings.third_party'
   | 'vehicle_settings.supercharger'
   | 'historical_sessions'
-  | 'default';
+  | 'default'
+  // Caller-side only — TariffResolverService.resolve() NEVER returns this.
+  // A consumer that finds session.manualCost != null returns
+  // { rate: manualCost, currency, source: 'manual_override' } itself,
+  // without calling resolve() at all (tariff-resolver.md §6). This exists
+  // in the union purely so every consumer's TariffResolution has one
+  // uniform shape regardless of whether the rate came from the resolver
+  // or from a user override.
+  | 'manual_override';
 
 export interface TariffContext {
   purpose: TariffPurpose;

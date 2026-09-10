@@ -93,6 +93,67 @@ describe('TariffResolverService — actual_cost', () => {
     expect(result).toEqual({ rate: 0.49, currency: 'EUR', source: 'vehicle_settings.supercharger' });
   });
 
+  it('Supercharger ToD: uses the standard (peak) rate during the configured peak window', async () => {
+    const { resolver } = makeResolver({
+      settings: { ...REAL_SEED_SETTINGS, superchargerOffPeakRate: 0.30, superchargerPeakStart: 8, superchargerPeakEnd: 22, timezone: 'Europe/Berlin' },
+    });
+
+    const result = await resolver.resolve({
+      purpose: 'actual_cost', vehicleId: VEHICLE_ID, chargerType: 'supercharger',
+      timestamp: new Date('2026-06-15T12:00:00Z'), // noon UTC = noon or +1/+2h Berlin, well within 8-22
+    });
+
+    expect(result).toEqual({ rate: 0.49, currency: 'EUR', source: 'vehicle_settings.supercharger' });
+  });
+
+  it('Supercharger ToD: uses the off-peak rate outside the configured peak window', async () => {
+    const { resolver } = makeResolver({
+      settings: { ...REAL_SEED_SETTINGS, superchargerOffPeakRate: 0.30, superchargerPeakStart: 8, superchargerPeakEnd: 22, timezone: 'Europe/Berlin' },
+    });
+
+    const result = await resolver.resolve({
+      purpose: 'actual_cost', vehicleId: VEHICLE_ID, chargerType: 'supercharger',
+      timestamp: new Date('2026-06-15T02:00:00Z'), // 2am UTC = 4am Berlin (summer) -- outside 8-22
+    });
+
+    expect(result).toEqual({ rate: 0.30, currency: 'EUR', source: 'vehicle_settings.supercharger' });
+  });
+
+  it('Supercharger ToD: with no off-peak rate configured, always uses the standard rate regardless of time', async () => {
+    const { resolver } = makeResolver({ settings: REAL_SEED_SETTINGS }); // superchargerOffPeakRate undefined
+
+    const result = await resolver.resolve({
+      purpose: 'actual_cost', vehicleId: VEHICLE_ID, chargerType: 'supercharger',
+      timestamp: new Date('2026-06-15T02:00:00Z'),
+    });
+
+    expect(result).toEqual({ rate: 0.49, currency: 'EUR', source: 'vehicle_settings.supercharger' });
+  });
+
+  it('0 is treated as unconfigured for homeChargingRate, falling through to the default tier', async () => {
+    const { resolver } = makeResolver({ settings: { ...REAL_SEED_SETTINGS, homeChargingRate: 0 } });
+
+    const result = await resolver.resolve({ purpose: 'actual_cost', vehicleId: VEHICLE_ID, chargerType: 'ac_home' });
+
+    expect(result).toEqual({ rate: 0.30, currency: 'EUR', source: 'default' });
+  });
+
+  it('0 is treated as unconfigured for thirdPartyRate, falling through to the default tier', async () => {
+    const { resolver } = makeResolver({ settings: { ...REAL_SEED_SETTINGS, thirdPartyRate: 0 } });
+
+    const result = await resolver.resolve({ purpose: 'actual_cost', vehicleId: VEHICLE_ID, chargerType: 'dc_third' });
+
+    expect(result).toEqual({ rate: 0.30, currency: 'EUR', source: 'default' });
+  });
+
+  it('0 is treated as unconfigured for superchargerRate, falling through to the default tier (canonicalizes the TripDetector-vs-TripGapRecovery divergence)', async () => {
+    const { resolver } = makeResolver({ settings: { ...REAL_SEED_SETTINGS, superchargerRate: 0 } });
+
+    const result = await resolver.resolve({ purpose: 'actual_cost', vehicleId: VEHICLE_ID, chargerType: 'supercharger' });
+
+    expect(result).toEqual({ rate: 0.30, currency: 'EUR', source: 'default' });
+  });
+
   it('resolves vehicle_settings.third_party for third-party charger types', async () => {
     const { resolver } = makeResolver({ settings: REAL_SEED_SETTINGS });
 

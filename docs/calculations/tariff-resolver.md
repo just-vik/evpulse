@@ -40,7 +40,14 @@ type TariffSource =
   | 'vehicle_settings.third_party'
   | 'vehicle_settings.supercharger'
   | 'historical_sessions'
-  | 'default';
+  | 'default'
+  // Caller-side only — resolve() NEVER returns this. A consumer that finds
+  // session.manualCost != null returns { rate: manualCost, currency,
+  // source: 'manual_override' } itself, without calling resolve() at all
+  // (§6). Exists purely so every consumer's TariffResolution has one
+  // uniform shape regardless of whether the rate came from the resolver
+  // or a user override.
+  | 'manual_override';
 
 interface TariffContext {
   purpose: TariffPurpose;
@@ -60,12 +67,24 @@ interface TariffResolution {
 }
 ```
 
-Two changes from the first draft, both decided:
+Changes from the first draft, all decided:
 - **`purpose` is required, three-valued**, not the two-valued optional
   field first proposed — `historical_summary` is its own case, not a forced
   fit into `actual_cost` or `forecast` (§3).
 - **`TariffSource` is granular per settings field** — `vehicle_settings`
   alone was rejected as insufficiently diagnostic (§4).
+- **`manual_override` added to `TariffSource`**, caller-side only, as above.
+- **A resolved rate of exactly `0` is treated as unconfigured**, not a real
+  free-electricity rate, for every `VehicleSettings` field the resolver
+  reads (home/third-party/supercharger standard rate) — canonicalizing in
+  favor of `TripDetectorService`'s `(x ?? 0) > 0` style over
+  `TripGapRecoveryService`'s plain `?? fallback`, which is the exact
+  divergence `tariff-current-behavior-trip-paths.spec.ts` found. A `0`
+  field falls through to the next tier exactly like a missing settings row.
+- **`chargingCost` stays excluded** — reconfirmed, not reversed. It is not
+  a resolver input, not a synonym for `homeChargingRate`, and not covered
+  by resolver tests. Existing callers that read it keep doing so
+  themselves until its own semantics are decided separately (§4).
 
 `historical_sessions` means a derived tariff from already-persisted
 charging costs, used **only** for `purpose: 'forecast'` — never for pricing
@@ -123,14 +142,30 @@ TariffResolverService.resolve({ purpose: 'historical_summary', ... })
 |---|---|---|---|
 | `homeChargingRate` | Configured €/kWh for energy charged **at home** | €0.35/kWh | `vehicle_settings.home` |
 | `thirdPartyRate` | Configured €/kWh for **public, non-Tesla** third-party charging — explicitly not the Supercharger tariff | **€0.55/kWh — decided canonical, see §5** | `vehicle_settings.third_party` |
-| `superchargerRate` | Configured **fallback** for Tesla Supercharger when the catalog can't resolve a price | €0.49/kWh | `vehicle_settings.supercharger` |
-| `chargingCost` | **Still not resolved — deliberately excluded from the resolver.** Kept as opaque legacy input; not treated as a synonym for the two fields above. Existing callers that currently read it (`CostForecastService`, `TripDetectorService`) keep doing so themselves until its domain semantics are formally decided — the resolver does not adopt it as a tier. | — | — (not a resolver source) |
+| `superchargerRate` | Configured **fallback standard/peak rate** for Tesla Supercharger when the catalog can't resolve a price | €0.49/kWh | `vehicle_settings.supercharger` |
+| `chargingCost` | **Excluded from the resolver — reconfirmed, not reversed.** Kept as opaque legacy input; not treated as a synonym for the two fields above, not a resolver tier, not covered by resolver tests. Existing callers that currently read it (`CostForecastService`, `TripDetectorService`) keep doing so themselves until its domain semantics are formally decided. | — | — (not a resolver source) |
 
 Provenance is now granular by design (`vehicle_settings.home` vs
 `.third_party` vs `.supercharger`) rather than one coarse
 `'vehicle_settings'` value — diagnostic value was judged to outweigh the
 extra enum surface, matching how `costSource` already distinguishes
 `'supercharger'` from `'tariff'` today.
+
+**Supercharger time-of-day pricing is part of the `vehicle_settings.
+supercharger` tier**, not a separate one — it's still one field's worth of
+"what does VehicleSettings say," just with a time component. Mirrors
+`charging-cost.service.ts`'s `superchargerRateForTime()` exactly (same
+peak/off-peak window resolution, same `timezone` fallback to
+`'Europe/Berlin'`), with the 0-as-unconfigured guard applied to the
+standard rate before any peak/off-peak branching:
+
+```
+standardRate = (superchargerRate ?? 0) > 0 ? superchargerRate : UNCONFIGURED
+if UNCONFIGURED: fall through to canonical default
+if superchargerOffPeakRate is null: use standardRate (no ToD pricing configured)
+else: use standardRate during [superchargerPeakStart, superchargerPeakEnd)
+      local time (vehicle timezone), else superchargerOffPeakRate
+```
 
 ## 5. `thirdPartyRate`: canonical value decided, reconciliation deferred
 

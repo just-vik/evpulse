@@ -132,21 +132,55 @@ export class TariffResolverService {
       );
     }
 
+    // 0 is treated as "not configured," not a real free-electricity rate —
+    // canonicalized to TripDetectorService's `(x ?? 0) > 0` style rather
+    // than TripGapRecoveryService's plain `?? fallback` (the two diverged;
+    // see tariff-current-behavior-trip-paths.spec.ts). A field that's
+    // present but exactly 0 falls through to the default tier below, same
+    // as a missing settings row.
     const type = context.chargerType;
-    let rate: number;
+    let rate: number | null;
     let source: TariffSource;
     if (type != null && TariffResolverService.SUPERCHARGER_TYPES.has(type)) {
-      rate = settings.superchargerRate;
+      rate = this.resolveSuperchargerRateForTime(settings, context.timestamp ?? new Date());
       source = 'vehicle_settings.supercharger';
     } else if (type != null && TariffResolverService.THIRD_PARTY_TYPES.has(type)) {
-      rate = settings.thirdPartyRate;
+      rate = (settings.thirdPartyRate ?? 0) > 0 ? settings.thirdPartyRate : null;
       source = 'vehicle_settings.third_party';
     } else {
-      rate = settings.homeChargingRate;
+      rate = (settings.homeChargingRate ?? 0) > 0 ? settings.homeChargingRate : null;
       source = 'vehicle_settings.home';
     }
 
+    if (rate == null) return null;
     return { rate, currency: this.config.canonicalCurrency, source };
+  }
+
+  /**
+   * MIRRORS charging-cost.service.ts's superchargerRateForTime() exactly —
+   * same peak/off-peak window, same timezone fallback, same semantics —
+   * plus the 0-as-unconfigured guard applied to the standard rate (that
+   * guard did not exist in the original; it's the canonicalized behavior
+   * decided for the resolver). Returns null (not a fallback value) when
+   * the standard rate itself is unconfigured, so the caller's resolve()
+   * chain falls through to the default tier.
+   */
+  private resolveSuperchargerRateForTime(settings: { superchargerRate: number; superchargerOffPeakRate?: number | null; superchargerPeakStart?: number | null; superchargerPeakEnd?: number | null; timezone?: string | null }, startTime: Date): number | null {
+    const standardRate = (settings.superchargerRate ?? 0) > 0 ? settings.superchargerRate : null;
+    if (standardRate == null) return null;
+
+    const offPeakRate = settings.superchargerOffPeakRate ?? null;
+    if (offPeakRate == null) return standardRate;
+
+    const peakStart = settings.superchargerPeakStart ?? 8;
+    const peakEnd = settings.superchargerPeakEnd ?? 22;
+    const tz = settings.timezone || 'Europe/Berlin';
+    const localHour = parseInt(
+      new Intl.DateTimeFormat('en', { timeZone: tz, hour: 'numeric', hour12: false }).format(startTime),
+      10,
+    );
+    const isPeak = localHour >= peakStart && localHour < peakEnd;
+    return isPeak ? standardRate : offPeakRate;
   }
 
   /** forecast only. Weighted average over ALL historical sessions with a
