@@ -1,11 +1,12 @@
 # TariffResolverService — design document
 
-Status: **PROPOSED — design only, nothing implemented.** No code, schema,
-or migration exists yet. This document exists to be reviewed and corrected
-*before* any of that starts, per the explicit ordering: contract → policy
-→ characterization tests of the five current paths → consolidation. See
-[`costs.md`](costs.md) and [`charging.md`](charging.md) for the audit
-findings this design responds to.
+Status: **PROPOSED — contract and policy finalized, nothing implemented.**
+No code, schema, or migration exists yet. All five open questions from the
+first draft are now resolved below. Next step: characterization tests for
+the five current paths (kept as a **separate, distinct test group** from
+future contract tests — see §9), then implementation, per the agreed
+ordering. See [`costs.md`](costs.md) and [`charging.md`](charging.md) for
+the audit findings this design responds to.
 
 ## 1. Responsibility (what this service is and isn't)
 
@@ -25,127 +26,146 @@ It does **not**:
 Every one of the five current call sites keeps its own "what do we count
 as cost" logic; only the "what rate" sub-question moves into this service.
 
-## 2. Contract
+## 2. Contract (final)
 
 ```ts
+type TariffPurpose =
+  | 'actual_cost'         // pricing a real charging session or trip, now
+  | 'historical_summary'  // aggregating already-persisted costs (e.g. getCostSummary)
+  | 'forecast';           // predicting future cost
+
 type TariffSource =
-  | 'supercharger_catalog'   // Tesla's own pricing API, GPS+time matched
-  | 'vehicle_settings'       // a configured VehicleSettings field
-  | 'historical_sessions'    // weighted average of past persisted costs
-  | 'default';               // canonical application default, last resort
+  | 'supercharger_catalog'
+  | 'vehicle_settings.home'
+  | 'vehicle_settings.third_party'
+  | 'vehicle_settings.supercharger'
+  | 'historical_sessions'
+  | 'default';
+
+interface TariffContext {
+  purpose: TariffPurpose;
+  vehicleId: string;
+  chargerType?: string;
+  location?: {
+    latitude: number;
+    longitude: number;
+  };
+  timestamp?: Date;
+}
 
 interface TariffResolution {
-  ratePerKwh: number;
+  rate: number;
   currency: string;
   source: TariffSource;
 }
-
-interface TariffContext {
-  vehicleId: string;
-  chargerType?: string | null;
-  latitude?: number | null;
-  longitude?: number | null;
-  timestamp: Date;
-}
 ```
+
+Two changes from the first draft, both decided:
+- **`purpose` is required, three-valued**, not the two-valued optional
+  field first proposed — `historical_summary` is its own case, not a forced
+  fit into `actual_cost` or `forecast` (§3).
+- **`TariffSource` is granular per settings field** — `vehicle_settings`
+  alone was rejected as insufficiently diagnostic (§4).
 
 `historical_sessions` means a derived tariff from already-persisted
-charging costs — not a new way to compute what a specific session actually
-cost. See §5 for why this tier is restricted to certain consumers.
+charging costs, used **only** for `purpose: 'forecast'` — never for pricing
+a session happening now, and never as `historical_summary`'s own fallback
+mechanism (§3).
 
-**Open question (not yet decided, flagging rather than assuming):**
-`TariffContext` as specified has no field for *which* consumer is asking
-or *why* — but §5 requires the resolver to behave differently for an
-actual-cost calculation (charging a real session) vs. a forecast. Two ways
-to resolve this, neither chosen yet:
-- (a) add `purpose: 'actual_cost' | 'forecast'` to `TariffContext`, and the
-  resolver internally skips the `historical_sessions` tier unless
-  `purpose === 'forecast'`
-- (b) don't touch the shared resolver's tiers at all; instead
-  `CostForecastService` keeps its own historical-averaging step ahead of
-  calling the resolver only for the settings/default tail of its own
-  ladder
-
-(b) is more conservative (smaller blast radius on the shared service) but
-partially defeats the point of consolidation for that one path. Needs a
-decision before the contract is final.
-
-## 3. `VehicleSettings` field semantics (canonical meanings, not renamed)
-
-| Field | Canonical meaning | Current seed/default | Notes |
-|---|---|---|---|
-| `homeChargingRate` | Configured €/kWh for energy charged **at home**. Used only when charging location/type is classified as home, or a consumer explicitly requests the home tariff. | €0.35/kWh | Consistent across every place it's declared — no open issue. |
-| `thirdPartyRate` | Configured €/kWh for **public, non-Tesla** third-party charging. Explicitly **not** the Supercharger tariff. | €0.55/kWh at vehicle creation | **Declared as €0.45 in two other places** (`VehicleSettingsService.DEFAULTS`, Prisma schema default) — see [`charging.md`](charging.md#vehiclesettings-is-the-primary-configured-tariff-source--the--032045-fallbacks-above-are-practically-unreachable). This design does not resolve which value is "right" — that's a data decision (does the resolver read the persisted €0.55, or should the declared defaults be reconciled to match it?), not a resolver-logic one. |
-| `superchargerRate` | Configured **fallback** €/kWh for Tesla Supercharger when the Tesla catalog can't resolve a price — not the primary source. | €0.49/kWh | Treated as fallback-only in this design, matching current `charging-cost.service.ts` behavior. |
-| `chargingCost` | **Not resolved in this pass.** Audit shows it used as an additional configured rate/fallback in existing code (`CostForecastService`, `TripDetectorService`), but its intended distinction from `homeChargingRate` was never established from the code alone. **Do not treat it as a synonym for `homeChargingRate` or `thirdPartyRate`** — its exact domain semantics need a separate decision before it's folded into this resolver or removed. Until then, the resolver should treat it as opaque legacy input, not silently reinterpret it. |
-
-## 4. Tesla Supercharger precedence
+## 3. Resolution policy, by purpose
 
 ```
-Tesla Supercharger catalog (GPS + time matched, real market rate)
-        ↓ (no site match, GPS unavailable, or catalog call fails)
-VehicleSettings.superchargerRate
-        ↓ (only if the specific consumer actually wants a non-Supercharger
-           tariff here — e.g. an ambiguous high-power DC session that
-           turned out not to be Tesla-branded)
-other configured tariff (thirdPartyRate)
+actual_cost:
+  Tesla Supercharger catalog  → source: 'supercharger_catalog'
+        ↓ (no match / no GPS / catalog error)
+  VehicleSettings (home / third-party / supercharger, by chargerType)
         ↓
-canonical default
-```
+  canonical default
 
-**Catalog failure semantics** (what counts as "the catalog didn't
-resolve," carried over from today's real behavior in
-[`charging.md`](charging.md#cost)):
-- No GPS coordinates available for the session
-- GPS available but no matching Supercharger site within the lookup radius
-- The catalog API call itself errors (network, auth, rate limit)
+historical_summary:
+  Use ChargingSession.costTotal AS PERSISTED — the resolver is not the
+  source of truth here at all for sessions that already have a cost.
+        ↓ (only for sessions with no persisted costTotal — a data gap,
+           not a missing-tariff case)
+  VehicleSettings              → source: 'vehicle_settings.*'
+        ↓
+  canonical default
+  # historical_sessions (weighted average) is NEVER used here — a rollup
+  # must not paper over its own gaps by re-deriving from other sessions'
+  # already-aggregated numbers; that would double-count signal.
 
-Any of these → fall through to `VehicleSettings.superchargerRate`,
-`source: 'vehicle_settings'`. A successful catalog match always wins and is
-never blended with settings or history — it's an **external authoritative
-price**, not a fallback-derived estimate, and must not be averaged with
-`historical_sessions` under any circumstance.
-
-**Open question:** `TariffSource.vehicle_settings` doesn't distinguish
-*which* settings field resolved (home / third-party / supercharger-fallback).
-Today's `costSource` column already carries finer strings
-(`'supercharger'`, `'tariff'`) — does `TariffResolution` need a similar
-sub-field, or is coarse `'vehicle_settings'` sufficient and the caller
-re-derives which field mattered from its own `chargerType` input? Not
-decided here.
-
-## 5. Historical-rate eligibility
-
-```
-purpose = forecast:
+forecast:
   ≥3 historical sessions with known costTotal + energyAddedKwh
-        ↓ (fewer than 3, or purpose ≠ forecast)
-  weighted average of those → source: 'historical_sessions'
+        ↓ (fewer than 3)
+  weighted average               → source: 'historical_sessions'
         ↓
-  VehicleSettings tariff → source: 'vehicle_settings'
+  VehicleSettings                → source: 'vehicle_settings.*'
         ↓
-  canonical default → source: 'default'
-
-purpose = actual_cost (pricing a real session/trip right now):
-  historical_sessions tier is SKIPPED ENTIRELY.
-  Tesla catalog → VehicleSettings → canonical default only.
+  canonical default
 ```
 
-Rationale (from your framing, kept verbatim): if a past session's price was
-wrong or anomalous, `historical_sessions` must not let that error
-propagate into new persisted costs. It's legitimate input for *predicting*
-a future cost, illegitimate input for *pricing* a session that's actually
-happening now. This is the same concern as the `purpose` field in §2 — the
-two need to be decided together, not independently.
+`VehicleAnalyticsService.getCostSummary` maps to `historical_summary`,
+resolving the open question from the first draft: it is architecturally
+"read what's already there, resolver only fills real gaps," not "compute a
+rate as if pricing something now or predicting the future." Concretely:
+
+```
+ChargingSession.costTotal (persisted)
+        ↓
+VehicleAnalyticsService's 30-day aggregation
+        ↓ (only for sessions missing costTotal)
+TariffResolverService.resolve({ purpose: 'historical_summary', ... })
+```
+
+## 4. `VehicleSettings` field semantics and provenance granularity
+
+| Field | Canonical meaning | Canonical value | `TariffSource` when used |
+|---|---|---|---|
+| `homeChargingRate` | Configured €/kWh for energy charged **at home** | €0.35/kWh | `vehicle_settings.home` |
+| `thirdPartyRate` | Configured €/kWh for **public, non-Tesla** third-party charging — explicitly not the Supercharger tariff | **€0.55/kWh — decided canonical, see §5** | `vehicle_settings.third_party` |
+| `superchargerRate` | Configured **fallback** for Tesla Supercharger when the catalog can't resolve a price | €0.49/kWh | `vehicle_settings.supercharger` |
+| `chargingCost` | **Still not resolved — deliberately excluded from the resolver.** Kept as opaque legacy input; not treated as a synonym for the two fields above. Existing callers that currently read it (`CostForecastService`, `TripDetectorService`) keep doing so themselves until its domain semantics are formally decided — the resolver does not adopt it as a tier. | — | — (not a resolver source) |
+
+Provenance is now granular by design (`vehicle_settings.home` vs
+`.third_party` vs `.supercharger`) rather than one coarse
+`'vehicle_settings'` value — diagnostic value was judged to outweigh the
+extra enum surface, matching how `costSource` already distinguishes
+`'supercharger'` from `'tariff'` today.
+
+## 5. `thirdPartyRate`: canonical value decided, reconciliation deferred
+
+**Canonical value: €0.55/kWh** — because that's the value actually written
+by `vehicles.service.ts` at vehicle creation, which is the real, live
+seed every vehicle gets. The resolver reads `VehicleSettings.thirdPartyRate`
+**as-is**, with no reconciliation logic:
+
+```
+rate = VehicleSettings.thirdPartyRate   // whatever is actually persisted
+```
+
+Not:
+
+```
+rate = thirdPartyRate === 0.45 ? 0.55 : thirdPartyRate   // NOT this
+```
+
+The €0.45 declared in `VehicleSettingsService.DEFAULTS` and the Prisma
+schema default are **not** the resolver's problem to paper over — they're
+a data/declaration inconsistency to fix separately (a data-cleanup pass
+that reconciles those two declarations to €0.55, out of scope for this
+service) so that the *only* place €0.45 could ever surface is if a
+`VehicleSettings` row genuinely doesn't exist yet — the same "essentially
+unreachable in practice" case documented in
+[`charging.md`](charging.md#vehiclesettings-is-the-primary-configured-tariff-source--the--032045-fallbacks-above-are-practically-unreachable).
 
 ## 6. Manual override — never enters the resolver
 
 ```
 if (session.manualCost != null) {
   return session.manualCost;   // exact user-provided value, as-is
+  // STOP — do not call the resolver at all
 }
 const tariff = await tariffResolver.resolve(context);
-// ... consumer applies tariff.ratePerKwh × energy, per its own cost semantics
 ```
 
 `manualCost` is checked by the **caller**, before the resolver is ever
@@ -153,36 +173,40 @@ invoked — it is not a `TariffSource` value and the resolver never sees a
 manually-costed session. This matches `calculateSessionCost`'s existing
 `if (costSource === 'manual' ...) return` guard
 ([`costs.md`](costs.md#manual-cost-override--bypasses-tariff-resolution-entirely))
-— the new design formalizes what already exists, doesn't change it.
+— the design formalizes what already exists, doesn't change it.
 
-## 7. Currency policy — deliberately incomplete here
+## 7. Currency policy — resolved as "not the resolver's to default silently"
 
 ```
-Tesla catalog's own currency (when a catalog match resolves)
-        ↓
-a configured currency (if/when one exists — see below)
-        ↓
-canonical application currency
+Tesla Supercharger catalog match  → currency comes from Tesla's own pricing data
+VehicleSettings                   → currency must be explicitly determined by
+                                     the system/vehicle settings (not assumed)
+Historical sessions                → use the currency of the persisted
+                                     records being averaged
+default tier                      → 'EUR' only once EUR is officially
+                                     ratified as the canonical application
+                                     currency — NOT a silent `?? 'EUR'`
+                                     inside the resolver
 ```
 
-**Not decided in this document:** what the "canonical application
-currency" actually is. Today it's an unexamined hardcoded `'EUR'` literal
-scattered across multiple files
-([`charging.md`](charging.md#cost), [`costs.md`](costs.md#units)) with no
-schema field backing it. This design deliberately does **not** carry that
-forward as a silent default — introducing a real currency policy (even if
-the answer ends up being "EUR, explicitly, as a documented product
-decision" rather than "EUR because nobody thought about it") is a separate
-decision this document flags but does not make.
+Decided: the resolver must **not** contain a bare `currency ?? 'EUR'`
+anywhere. Until a canonical-currency decision is formally made elsewhere
+(product/business decision, not a resolver-logic one), the `default` tier
+either surfaces the absence explicitly (e.g. throws, or returns a
+resolution the caller must reject) rather than silently defaulting — the
+exact mechanism is an implementation detail for when the resolver is
+actually built, but "silently assume EUR" is ruled out now.
 
 ## 8. Architecture
 
 ```
-                    ┌─ Tesla Supercharger catalog
+                    ┌─ Tesla Supercharger catalog        (actual_cost)
                     │
-TariffResolver ─────┼─ VehicleSettings (home / third-party / supercharger)
-                    │
-                    ├─ Historical sessions   (forecast purpose only — §5)
+TariffResolver ─────┼─ VehicleSettings (home/3rd-party/supercharger)
+                    │                                    (all purposes,
+                    │                                     as gap-fallback
+                    │                                     for historical_summary)
+                    ├─ Historical sessions                (forecast only)
                     │
                     └─ Canonical default
                            │
@@ -191,8 +215,10 @@ TariffResolver ─────┼─ VehicleSettings (home / third-party / super
                            │
               ┌────────────┼────────────┐
               ▼            ▼            ▼
-           Charging        Trip       Forecast
-             cost          cost        cost
+           Charging    Trip cost    Forecast /
+             cost      (finalize)   cost-summary
+           (actual_     (actual_    (forecast /
+            cost)        cost)      historical_summary)
 
 manualCost sits BEFORE the resolver, as an explicit bypass — never a tier
 inside it (§6).
@@ -200,47 +226,48 @@ inside it (§6).
 
 ## 9. Migration mapping — old five paths → new resolver
 
-| Current implementation | What it keeps doing itself | What moves to `TariffResolverService` |
+| Current implementation | What it keeps doing itself | Resolver call |
 |---|---|---|
-| `ChargingCostService.calculateSessionCost` | Ghost-session rejection, efficiency calc, GPS-based catalog lookup call, persisting `costTotal`/`costSource` | The catalog→settings→default rate decision (§4); `manualCost` short-circuit stays in this service, ahead of the resolver call |
-| `VehicleAnalyticsService.getCostSummary` | Period aggregation, `costPerKm` ratio, preferring persisted `session.costTotal` first | The re-derivation fallback (currently its own charger-type keyword match + `pricePerKwh`) — becomes a resolver call with `purpose: 'actual_cost'` (or `'forecast'`? — this endpoint computes a historical rollup, not a live session price; needs a decision, see below) |
-| `CostForecastService.resolveRate`/`forecastForVehicle` | `avgEnergyPerDay` computation, weekly/monthly projection | The entire rate ladder becomes a `purpose: 'forecast'` resolver call — this is the path `historical_sessions` was designed for |
-| `TripDetectorService` trip-finalize | Everything about what `Trip.costTotal` means (§ unchanged, see [`costs.md`](costs.md#trip-cost)) | Just the rate lookup — `purpose: 'actual_cost'`, since a trip's notional cost is being fixed at finalize time, not forecast |
-| `TripGapRecoveryService` | Same as above, for reconstructed trips | Same resolver call as `TripDetectorService` — this also fixes the missing-`chargingCost`-tier inconsistency between the two paths, since both would call the same resolver instead of hand-rolling their own partial ladders |
+| `ChargingCostService.calculateSessionCost` | Ghost-session rejection, efficiency calc, GPS-based catalog lookup, persisting `costTotal`/`costSource`; `manualCost` short-circuit stays here, ahead of the resolver call | `purpose: 'actual_cost'` |
+| `VehicleAnalyticsService.getCostSummary` | Period aggregation, `costPerKm` ratio, preferring persisted `session.costTotal` first | `purpose: 'historical_summary'` — resolver used only for sessions missing `costTotal`, never re-derives a full rollup |
+| `CostForecastService.resolveRate`/`forecastForVehicle` | `avgEnergyPerDay` computation, weekly/monthly projection | `purpose: 'forecast'` — the one path that legitimately uses `historical_sessions` |
+| `TripDetectorService` trip-finalize | Everything about what `Trip.costTotal` means, unchanged (see [`costs.md`](costs.md#trip-cost)) | `purpose: 'actual_cost'` |
+| `TripGapRecoveryService` | Same as above, for reconstructed trips | `purpose: 'actual_cost'` — same resolver call as `TripDetectorService`, which also fixes the missing-`chargingCost`-tier inconsistency between the two paths since both now share one ladder |
 
-**Open question:** `VehicleAnalyticsService.getCostSummary` is a 30-day
-*rollup* of what already happened, not a forecast and not pricing a live
-session — it doesn't cleanly fit either `purpose` value from §5. This
-needs its own decision, not a forced fit into the two-value enum as
-currently scoped.
+## 10. Decisions that still require a schema/data change (unchanged from draft 1, still deferred)
 
-## 10. Decisions that require a schema change (deliberately not made here)
-
-Listed, not resolved — none of these are touched until characterization
-tests exist for all five current paths:
-
-1. **`thirdPartyRate` €0.55-vs-€0.45 reconciliation** — does the schema
-   default / `VehicleSettingsService.DEFAULTS` change to match the real
-   €0.55 seed, or does the seed change to €0.45? Either is a data decision
-   affecting real persisted rows, not just declared constants.
-2. **`chargingCost`'s fate** — keep as distinct legacy field, formally
-   define its semantics, or deprecate/migrate into `homeChargingRate`? Not
-   decided (§3).
-3. **Currency** — whether `VehicleSettings` (or `ChargingSession`) gets a
-   real `currency`/canonical-currency field, vs. continuing with the
-   unexamined `'EUR'` literal (§7).
-4. **`TariffContext.purpose`** — whether this field gets added at all
-   (§2, §5), and how `VehicleAnalyticsService.getCostSummary` maps onto it
-   (§9).
-5. **Source provenance granularity** — whether `TariffSource` needs a
-   sub-field for which `VehicleSettings` column resolved (§4).
+1. **`thirdPartyRate` reconciliation** — €0.55 is now the *canonical
+   value* (§5), but `VehicleSettingsService.DEFAULTS` and the Prisma schema
+   default still declare €0.45. A data-cleanup pass to align those
+   declarations is still needed; the resolver design assumes it will
+   happen but does not perform it.
+2. **`chargingCost`'s fate** — still not decided (§4): keep as distinct
+   legacy field, formally define its semantics, or deprecate/migrate?
+3. **Currency** — whether `VehicleSettings`/`ChargingSession` gets a real
+   currency field, and what the canonical application currency actually is
+   (§7) — a product decision, not made here.
 
 ## 11. Explicitly not touched in this design pass
 
 Per instruction: Prisma schema, `Trip.costTotal`/`ChargingSession.costTotal`
 semantics, `costPerKwh` schema, currency columns, `superchargerRate`
-migration, `chargingCost` removal, and actual tariff values. Next step
-after this document is reviewed: characterization tests for all five
-current paths (pinning today's actual output, including the dead fallback
-constants' current — even if unreachable — behavior), *then* migration
-design, per the explicit ordering already agreed.
+migration, `chargingCost` removal, and actual tariff values. Next step:
+characterization tests for the five current paths — see the ordering rule
+below.
+
+## 12. Test ordering rule (do not mix these two groups)
+
+1. **Current-behavior tests** — pin what the five existing implementations
+   actually return today, including the practically-unreachable dead
+   fallback constants (§ [`costs.md`](costs.md#the-central-finding-corrected-one-real-settings-source-mostly-dead-fallback-code-and-one-genuinely-distinct-default)),
+   written and passing *before* any resolver code exists. These tests
+   describe the current system, not the target one — €0.35/€0.45/€0.55 and
+   all.
+2. **`TariffResolverService` contract tests** — written against the new
+   service once it exists, asserting *this* document's policy (§3–§7).
+
+The two groups must not be merged into one file or one assertion set —
+doing so would risk quietly canonizing today's accidental disagreements
+(e.g. €0.45 vs €0.55) as if they were an intentional part of the new
+contract, instead of the resolver replacing them with one deliberate
+answer (§5).

@@ -23,7 +23,7 @@ section for why that order matters.
 
 | File | Covers | Status |
 |---|---|---|
-| [`tariff-resolver.md`](tariff-resolver.md) | `TariffResolverService` contract + resolution policy, consolidating the five tariff paths in [`costs.md`](costs.md) | Proposed, pending review — no code/schema yet |
+| [`tariff-resolver.md`](tariff-resolver.md) | `TariffResolverService` contract + resolution policy, consolidating the five tariff paths in [`costs.md`](costs.md) | Contract/policy finalized — no code/schema yet; characterization tests next |
 
 ## Units
 
