@@ -17,7 +17,7 @@ section for why that order matters.
 | [`battery-health.md`](battery-health.md) | SOH / degradation estimate — two competing engines found; `BatteryAnalyticsService` now designated canonical, `BatteryHealthService` legacy | Done |
 | [`range.md`](range.md) | Range prediction | Done |
 | [`costs.md`](costs.md) | Charging/trip/energy cost, cost-per-km, forecast (implemented); TCO, fleet economics (not implemented) | Done |
-| `data-quality.md` | Cross-cutting confidence/quality patterns, once enough specs exist to generalize from | Pending |
+| [`data-quality.md`](data-quality.md) | Cross-cutting catalogue: data states, outlier thresholds, confidence models, proposed future contract | Done |
 
 ## Units
 
