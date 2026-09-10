@@ -16,7 +16,15 @@
  * NOT exercising the real code path — if the source changes, these mirrors
  * must be updated to match or this file silently tests the wrong thing.
  * Do not treat this file as end-to-end coverage of either service.
+ *
+ * TripDetectorService MIGRATED to TariffResolverService (see the second
+ * describe block below and commit history) — its CURRENT-BEHAVIOR block
+ * stays put as the pre-migration pinned record, per the never-merge rule
+ * above; it is not re-run against the real migrated code. TripGapRecoveryService
+ * is not yet migrated and its CURRENT-BEHAVIOR block still reflects live code.
  */
+
+import { TariffResolverService } from '../src/charging/tariff-resolver.service';
 
 interface FakeSettings {
   homeChargingRate?: number | null;
@@ -96,6 +104,76 @@ describe('CURRENT BEHAVIOR (isolated snippet): TripDetectorService trip-finalize
     const result = await tripFinalizeCostSnippet(prisma, 'veh-1', null);
     expect(result).toBeNull();
     expect(prisma.vehicleSettings.findUnique).not.toHaveBeenCalled(); // short-circuited before any lookup
+  });
+});
+
+/**
+ * MIRROR of trip-detector.service.ts's migrated "Cost per trip" block
+ * (finalizeTripToDb, post-TariffResolverService migration) -- same scoping
+ * rationale as the CURRENT-BEHAVIOR mirror above: no full state-machine
+ * fixtures, just the tariff-selection lines run in isolation, but against
+ * a REAL TariffResolverService rather than a re-implemented snippet, so
+ * this one can't silently drift from the resolver's actual contract.
+ * No chargerType/location is ever passed -- confirmed by tracing the real
+ * finalizeTripToDb(): the trip builder never captures charger metadata.
+ */
+async function tripFinalizeCostViaResolver(
+  resolver: TariffResolverService,
+  vehicleId: string,
+  energyUsedKwh: number | null,
+): Promise<number | null> {
+  if (energyUsedKwh == null) return null;
+  const resolution = await resolver.resolve({ purpose: 'actual_cost', vehicleId });
+  return Math.round(energyUsedKwh * resolution.rate * 100) / 100;
+}
+
+function makeResolver(settings: FakeSettings | null) {
+  const prisma: any = {
+    vehicleSettings: { findUnique: jest.fn(async () => settings) },
+    vehicle: { findUnique: jest.fn(async () => null) },
+  };
+  return new TariffResolverService(prisma, undefined, undefined, {
+    canonicalDefaultRate: 0.35,
+    canonicalCurrency: 'EUR',
+  });
+}
+
+describe('MIGRATED (isolated snippet): TripDetectorService trip-finalize cost via TariffResolverService', () => {
+  it('UNCHANGED: uses homeChargingRate when it is a positive real value (the actual €0.35 seed)', async () => {
+    const resolver = makeResolver({ homeChargingRate: 0.35, chargingCost: 0 });
+    const result = await tripFinalizeCostViaResolver(resolver, 'veh-1', 20);
+    expect(result).toBe(7); // 20 * 0.35
+  });
+
+  it('KNOWN, ACCEPTED DIVERGENCE: no longer falls through to chargingCost when homeChargingRate is exactly 0 -- goes straight to the canonical default', async () => {
+    // Pre-migration this hit chargingCost (0.4) — see the CURRENT-BEHAVIOR
+    // block above. TariffResolverService's vehicle_settings.home tier has
+    // no chargingCost fallback (tariff-resolver.md's chargingCost exclusion,
+    // already applied identically to ChargingCostService/VehicleAnalyticsService/
+    // CostForecastService).
+    const resolver = makeResolver({ homeChargingRate: 0, chargingCost: 0.4 });
+    const result = await tripFinalizeCostViaResolver(resolver, 'veh-1', 10);
+    expect(result).toBe(3.5); // 10 * 0.35 (canonicalDefaultRate), NOT 4 (chargingCost)
+  });
+
+  it('KNOWN, ACCEPTED DIVERGENCE: default tier now returns the shared canonicalDefaultRate (0.35) instead of the old hardcoded €0.25', async () => {
+    const resolver = makeResolver({ homeChargingRate: 0, chargingCost: 0 });
+    const result = await tripFinalizeCostViaResolver(resolver, 'veh-1', 10);
+    expect(result).toBe(3.5); // 10 * 0.35, NOT 2.5 (old hardcoded 0.25)
+  });
+
+  it('KNOWN, ACCEPTED DIVERGENCE: settings row entirely missing also resolves to canonicalDefaultRate, not the old hardcoded €0.25', async () => {
+    const resolver = makeResolver(null);
+    const result = await tripFinalizeCostViaResolver(resolver, 'veh-1', 10);
+    expect(result).toBe(3.5);
+  });
+
+  it('UNCHANGED: returns null (not 0, not a crash) when energyUsedKwh is null, without ever calling the resolver', async () => {
+    const resolver = makeResolver({ homeChargingRate: 0.35 });
+    const resolveSpy = jest.spyOn(resolver, 'resolve');
+    const result = await tripFinalizeCostViaResolver(resolver, 'veh-1', null);
+    expect(result).toBeNull();
+    expect(resolveSpy).not.toHaveBeenCalled();
   });
 });
 

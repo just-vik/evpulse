@@ -22,11 +22,26 @@ import { TripMaintenanceService } from './trip-maintenance.service';
 import { KalmanGpsFilter } from './kalman-gps.filter';
 import { MlModule } from '../ml/ml.module';
 import { DistributedLockService } from '../common/services/distributed-lock.service';
+import { TariffResolverService, TARIFF_RESOLVER_CONFIG, TariffResolverConfig } from '../charging/tariff-resolver.service';
 
 @Module({
   imports: [PrismaModule, BillingModule, VehiclesModule, BatteryModule, GeocodingModule, WebsocketsModule, InfraModule, MapsModule, MlModule, EventsModule],
   controllers: [TripsController],
-  providers: [KalmanGpsFilter, TripBuilderService, TripDetectorService, TripBackfillService, TripCleanupService, TripReconcilerService, TripPostProcessorService, TripGapRecoveryService, TripPatternService, TripMaintenanceService, EnergyAnalyticsService, DistributedLockService],
+  providers: [
+    KalmanGpsFilter, TripBuilderService, TripDetectorService, TripBackfillService, TripCleanupService, TripReconcilerService, TripPostProcessorService, TripGapRecoveryService, TripPatternService, TripMaintenanceService, EnergyAnalyticsService, DistributedLockService,
+    TariffResolverService,
+    {
+      provide: TARIFF_RESOLVER_CONFIG,
+      // Same provisional values as ChargingModule/AnalyticsModule's registration
+      // -- see docs/calculations/tariff-resolver.md §10. This module doesn't
+      // import TeslaFleetModule, so this instance's superchargerPricing/teslaOAuth
+      // deps resolve to undefined (@Optional() on TariffResolverService itself) --
+      // harmless: neither TripDetectorService nor TripGapRecoveryService ever
+      // calls resolve() with a chargerType/location, so the catalog tier is
+      // never reached.
+      useValue: { canonicalDefaultRate: 0.35, canonicalCurrency: 'EUR' } satisfies TariffResolverConfig,
+    },
+  ],
   exports: [KalmanGpsFilter, TripBuilderService, TripDetectorService, TripBackfillService, TripCleanupService, TripReconcilerService, TripPostProcessorService, TripGapRecoveryService, TripPatternService, TripMaintenanceService],
 })
 export class TripsModule {}

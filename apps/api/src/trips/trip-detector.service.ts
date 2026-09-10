@@ -12,6 +12,7 @@ import { TripPostProcessorService } from './trip-post-processor.service';
 import { FeatureBuilderService } from '../ml/feature-builder.service';
 import { EventStoreService } from '../events/event-store.service';
 import { KalmanGpsFilter } from './kalman-gps.filter';
+import { TariffResolverService } from '../charging/tariff-resolver.service';
 import {
   TripBuilderService,
   TripBuffer,
@@ -85,6 +86,7 @@ export class TripDetectorService {
     @Optional() private readonly tripPostProcessor?: TripPostProcessorService,
     @Optional() private readonly featureBuilder?: FeatureBuilderService,
     @Optional() private readonly eventStore?: EventStoreService,
+    private readonly tariffResolver?: TariffResolverService,
   ) {
     this.STOP_TIMEOUT_CITY_MS = this.numCfg('TRIP_STOP_TIMEOUT_CITY_MS', 240_000);
     this.STOP_TIMEOUT_HIGHWAY_MS = this.numCfg('TRIP_STOP_TIMEOUT_HIGHWAY_MS', 480_000);
@@ -1352,15 +1354,21 @@ export class TripDetectorService {
     const drivingScore = Math.min(100, effScore + smoothScore + stopScore);
 
     // ── Cost per trip ─────────────────────────────────────────────────────
+    // Delegated to TariffResolverService (purpose: 'actual_cost') -- this is
+    // the cost of energy the trip consumed, not a charging session, so no
+    // chargerType/location is passed (none exists in this code path); the
+    // resolver's home-settings tier is the only one ever reached. See
+    // docs/calculations/tariff-resolver.md and tariff-current-behavior-trip-paths.spec.ts
+    // for the two accepted divergences from the pre-migration literal logic:
+    // settings.chargingCost is no longer a fallback, and the hardcoded 0.25
+    // default is now the shared canonicalDefaultRate (0.35).
     let costTotal: number | null = null;
     if (energyUsedKwh != null) {
-      const settings = await this.prisma.vehicleSettings.findUnique({ where: { vehicleId } });
-      const rateEurKwh = (settings?.homeChargingRate ?? 0) > 0
-        ? settings!.homeChargingRate!
-        : (settings?.chargingCost ?? 0) > 0
-          ? settings!.chargingCost!
-          : 0.25;
-      costTotal = Math.round(energyUsedKwh * rateEurKwh * 100) / 100;
+      if (!this.tariffResolver) {
+        throw new Error(`TripDetectorService: TariffResolverService not available (trip ${tripId})`);
+      }
+      const resolution = await this.tariffResolver.resolve({ purpose: 'actual_cost', vehicleId });
+      costTotal = Math.round(energyUsedKwh * resolution.rate * 100) / 100;
     }
 
     // P1 phase-1 draft: schedule delayed reconciliation (2–10 min) for post-processor pass
