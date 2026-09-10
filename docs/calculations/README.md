@@ -19,6 +19,12 @@ section for why that order matters.
 | [`costs.md`](costs.md) | Charging/trip/energy cost, cost-per-km, forecast (implemented); TCO, fleet economics (not implemented) | Done |
 | [`data-quality.md`](data-quality.md) | Cross-cutting catalogue: data states, outlier thresholds, confidence models, proposed future contract | Done |
 
+## Design proposals (not audit — nothing here is implemented)
+
+| File | Covers | Status |
+|---|---|---|
+| [`tariff-resolver.md`](tariff-resolver.md) | `TariffResolverService` contract + resolution policy, consolidating the five tariff paths in [`costs.md`](costs.md) | Proposed, pending review — no code/schema yet |
+
 ## Units
 
 Internal storage and calculation use SI-ish base units; display formatting
