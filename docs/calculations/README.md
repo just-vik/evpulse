@@ -14,7 +14,7 @@ section for why that order matters.
 | [`energy.md`](energy.md) | Trip energy, consumption (Wh/km) | Done |
 | [`trips.md`](trips.md) | Trip detection state machine, start/end, distance, gaps | Done |
 | [`charging.md`](charging.md) | Charging session detection, energy source ladder, cost, efficiency | Done |
-| `battery-health.md` | SOH / degradation | Pending |
+| [`battery-health.md`](battery-health.md) | SOH / degradation estimate | Done |
 | `range.md` | Range prediction | Pending |
 | `costs.md` | TCO / cost-per-km rollups | Pending — no implementation exists yet, will document as such |
 | `data-quality.md` | Cross-cutting confidence/quality patterns, once enough specs exist to generalize from | Pending |
@@ -75,7 +75,7 @@ documents the actual fragmentation, not an aspirational unification:
 - **Battery health**: a 0–1 `confidenceScore`, persisted per estimate,
   scaled by sample count and estimation method (`0.30–0.70` for the
   fallback method, `0.50–0.95` for the quality method). See
-  `battery-health.md` (pending).
+  [`battery-health.md`](battery-health.md#confidence).
 - **Charging**: no numeric confidence at all — only a `costSource` /
   `chargerType` string indicating which pricing tier was used. See
   [`charging.md`](charging.md#data-quality-rules--confidence).
