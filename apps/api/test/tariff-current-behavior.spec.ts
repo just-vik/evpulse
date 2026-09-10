@@ -1,11 +1,21 @@
 /**
  * CURRENT-BEHAVIOR characterization tests — group 1 of 2, per
  * docs/calculations/tariff-resolver.md §12 ("do not mix these two
- * groups"). These pin what the existing five tariff-resolution paths
- * actually return TODAY, including disagreements and practically-dead
- * fallback constants — they describe the current system, not the future
- * TariffResolverService contract. A future contract-test file must NOT be
- * added to this one.
+ * groups"). These pin what the five tariff-resolution paths return,
+ * including disagreements and practically-dead fallback constants — they
+ * describe the current SYSTEM BEHAVIOR (values, not implementations), not
+ * the TariffResolverService contract's own test group.
+ *
+ * UPDATE (ChargingCostService migration): as of
+ * docs/calculations/tariff-resolver.md §9's first production migration,
+ * ChargingCostService.calculateSessionCost's non-catalog tiers now
+ * delegate to a real TariffResolverService instead of inline settings
+ * lookups. This describe block still asserts the exact same expected
+ * values as before the migration — that's the point: unchanged assertions
+ * passing against changed internals is the regression proof that the
+ * migration preserved behavior. VehicleAnalyticsService/CostForecastService
+ * below are NOT migrated yet and still exercise their original,
+ * pre-resolver code paths.
  *
  * This file covers the three paths with clean, directly-callable public
  * methods: ChargingCostService.calculateSessionCost, VehicleAnalyticsService
@@ -18,6 +28,7 @@
  */
 
 import { ChargingCostService } from '../src/charging/charging-cost.service';
+import { TariffResolverService } from '../src/charging/tariff-resolver.service';
 import { VehicleAnalyticsService } from '../src/analytics/vehicle-analytics.service';
 import { CostForecastService } from '../src/analytics/cost-forecast.service';
 
@@ -55,12 +66,22 @@ describe('CURRENT BEHAVIOR: ChargingCostService.calculateSessionCost', () => {
         findUnique: jest.fn(async () => session),
         update: jest.fn(async ({ data }: any) => ({ ...session, ...data })),
       },
+      // TariffResolverService's own dependency — reads the SAME settings
+      // object the session fixture carries, so the resolver sees exactly
+      // what ChargingCostService used to read inline pre-migration.
+      vehicleSettings: {
+        findUnique: jest.fn(async () => session.vehicle?.settings ?? REAL_SEED_SETTINGS),
+      },
     };
     // superchargerPricing/teslaOAuth are @Optional() — omitted entirely to
     // characterize the "no catalog stack available" branch, which is also
     // exactly what a session with no GPS hits regardless.
-    const service = new ChargingCostService(prisma);
-    return { service, prisma };
+    const tariffResolver = new TariffResolverService(prisma, undefined, undefined, {
+      canonicalDefaultRate: 0.35,
+      canonicalCurrency: 'EUR',
+    });
+    const service = new ChargingCostService(prisma, undefined, undefined, tariffResolver);
+    return { service, prisma, tariffResolver };
   }
 
   it('home charging (default bucket) uses settings.homeChargingRate = €0.35 as-persisted', async () => {
@@ -109,6 +130,31 @@ describe('CURRENT BEHAVIOR: ChargingCostService.calculateSessionCost', () => {
     const written = (prisma.chargingSession.update as jest.Mock).mock.calls[0][0].data;
     expect(written.costPerKwh).toBe(0.49);
     expect(written.costSource).toBe('supercharger');
+  });
+
+  it('KNOWN, ACCEPTED DIVERGENCE: when VehicleSettings is entirely missing, the migrated service now uses one shared canonicalDefaultRate instead of the old per-bucket hardcoded literal', async () => {
+    // Pre-migration: settings?.homeChargingRate ?? 0.32 (home bucket) vs
+    // settings?.thirdPartyRate ?? 0.45 (third-party bucket) -- two
+    // different hardcoded numbers depending on chargerType. Post-migration:
+    // TariffResolverService's single canonicalDefaultRate (0.35, see
+    // ChargingModule) applies regardless of bucket. This branch requires a
+    // vehicle with NO VehicleSettings row at all, which VehiclesService's
+    // "always ensure VehicleSettings exist" guarantee makes practically
+    // unreachable in production (charging.md) -- documented here as the
+    // one accepted exception per the migration's own ground rules, not
+    // silently absorbed into the "unchanged" assertions above.
+    const session = {
+      id: 's-no-settings', vehicleId: VEHICLE_ID, chargerType: 'ac_home', maxPowerKw: 7,
+      energyAddedKwh: 10, startTime: new Date(), costSource: null,
+      vehicle: { id: VEHICLE_ID, userId: 'u1', settings: null },
+    };
+    const { service, prisma } = makeService(session);
+
+    await service.calculateSessionCost('s-no-settings');
+
+    const written = (prisma.chargingSession.update as jest.Mock).mock.calls[0][0].data;
+    expect(written.costPerKwh).toBe(0.35); // NOT the old 0.32 home-bucket literal
+    expect(written.costSource).toBe('tariff');
   });
 
   it('a session already costed as manual is never recalculated', async () => {

@@ -3,7 +3,24 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { SuperchargerPricingService } from './supercharger-pricing.service';
 import { TeslaOAuthService } from '../tesla-fleet/tesla-oauth.service';
+import { TariffResolverService } from './tariff-resolver.service';
+import { TariffSource } from './tariff-resolution.types';
 import { isWorkerRole } from '../runtime/runtime-role';
+
+/**
+ * Maps a TariffResolverService source to this service's own costSource
+ * vocabulary, preserving the two persisted values that existed before the
+ * migration (docs/calculations/tariff-resolver.md §9) — 'supercharger' for
+ * the ToD/settings supercharger rate, 'tariff' for everything else,
+ * INCLUDING the resolver's 'default' tier: the pre-migration code never
+ * distinguished "used your configured setting" from "used the hardcoded
+ * fallback" in costSource either (both were 'tariff'), so this preserves
+ * that same lack of distinction rather than introducing a new persisted
+ * value no downstream reader expects.
+ */
+function toLegacyCostSource(source: TariffSource): string {
+  return source === 'vehicle_settings.supercharger' ? 'supercharger' : 'tariff';
+}
 
 /**
  * ChargingCostService — session cost from tariffs + Tesla catalog / billing.
@@ -23,6 +40,7 @@ export class ChargingCostService {
     private readonly prisma: PrismaService,
     @Optional() private readonly superchargerPricing?: SuperchargerPricingService,
     @Optional() private readonly teslaOAuth?: TeslaOAuthService,
+    private readonly tariffResolver?: TariffResolverService,
   ) {}
 
   /**
@@ -64,8 +82,11 @@ export class ChargingCostService {
     const session = await (this.prisma as any).chargingSession.findUnique({
       where: { id: sessionId },
       include: {
+        // `settings` no longer selected here -- TariffResolverService reads
+        // VehicleSettings itself for every non-catalog tier now. `userId`
+        // stays: still needed for the Tesla catalog access token below.
         vehicle: {
-          select: { id: true, userId: true, settings: true },
+          select: { id: true, userId: true },
         },
       },
     });
@@ -78,7 +99,6 @@ export class ChargingCostService {
     const energy = session.energyAddedKwh ?? 0;
     if (energy <= 0) return;
 
-    const settings    = session.vehicle.settings;
     const chargerType = session.chargerType ?? 'ac_home';
 
     let costPerKwh: number;
@@ -157,25 +177,19 @@ export class ChargingCostService {
               `${costPerKwh}€/kWh (${pricing.source}) × ${energy.toFixed(2)}kWh`,
             );
           } else {
-            // No Tesla site match: explicit Tesla SC → vehicle supercharger ToD rate;
-            // high-power DC without Tesla brand → public DC tariff (Ionity, etc.).
-            if (explicitTeslaSc) {
-              costPerKwh = this.superchargerRateForTime(settings, session.startTime);
-              costSource = 'supercharger';
-            } else {
-              costPerKwh = settings?.thirdPartyRate ?? 0.45;
-              costSource = 'tariff';
-            }
+            // No Tesla site match: fall through to TariffResolverService for
+            // the ToD/settings/default decision (tariff-resolver.md §9) —
+            // no `location` in the context, so the resolver's own catalog
+            // tier is skipped rather than re-attempting a call we just made.
+            const resolved = await this.resolveFallbackTariff(sessionId, session.vehicleId, chargerType, session.startTime);
+            costPerKwh = resolved.rate;
+            costSource = toLegacyCostSource(resolved.source);
           }
         } catch (err: any) {
           this.logger.warn(`[Cost] Supercharger pricing lookup failed for ${sessionId}: ${err.message}`);
-          if (explicitTeslaSc) {
-            costPerKwh = this.superchargerRateForTime(settings, session.startTime);
-            costSource = 'supercharger';
-          } else {
-            costPerKwh = settings?.thirdPartyRate ?? 0.45;
-            costSource = 'tariff';
-          }
+          const resolved = await this.resolveFallbackTariff(sessionId, session.vehicleId, chargerType, session.startTime);
+          costPerKwh = resolved.rate;
+          costSource = toLegacyCostSource(resolved.source);
         }
       } else {
         // No GPS (underground, etc.) or pricing stack unavailable — no catalog lookup.
@@ -184,27 +198,16 @@ export class ChargingCostService {
             `[Cost] session=${sessionId} high-power DC without GPS — thirdPartyRate (no Tesla catalog)`,
           );
         }
-        if (explicitTeslaSc) {
-          costPerKwh = this.superchargerRateForTime(settings, session.startTime);
-          costSource = 'supercharger';
-        } else {
-          // isHighPowerDc (outer branch) without catalog
-          costPerKwh = settings?.thirdPartyRate ?? 0.45;
-          costSource = 'tariff';
-        }
+        const resolved = await this.resolveFallbackTariff(sessionId, session.vehicleId, chargerType, session.startTime);
+        costPerKwh = resolved.rate;
+        costSource = toLegacyCostSource(resolved.source);
       }
-    } else if (chargerType === 'dc_fast' || chargerType === 'dc_third') {
-      // 3rd-party DC fast (Ionity, Allego, EnBW …) below 50 kW peak
-      costPerKwh = settings?.thirdPartyRate ?? 0.45;
-      costSource = 'tariff';
-    } else if (chargerType === 'ac_city' || chargerType === 'ac_fast') {
-      // Public AC city charger (22 kW) — billed at public tariff
-      costPerKwh = settings?.thirdPartyRate ?? 0.45;
-      costSource = 'tariff';
     } else {
-      // home_slow, home_wall, ac_home, ac_slow → home electricity rate
-      costPerKwh = settings?.homeChargingRate ?? 0.32;
-      costSource = 'tariff';
+      // dc_fast/dc_third below 50kW, ac_city/ac_fast, or the home bucket —
+      // no catalog attempt at all, straight to TariffResolverService.
+      const resolved = await this.resolveFallbackTariff(sessionId, session.vehicleId, chargerType, session.startTime);
+      costPerKwh = resolved.rate;
+      costSource = toLegacyCostSource(resolved.source);
     }
 
     const costTotal = Math.round(costPerKwh * energy * 100) / 100;
@@ -264,6 +267,33 @@ export class ChargingCostService {
   }
 
   /**
+   * Delegates the ToD/settings/default tariff decision to
+   * TariffResolverService (docs/calculations/tariff-resolver.md §9).
+   * Deliberately never passes `location`: any GPS-based catalog attempt
+   * for this session already happened (or was skipped) above, in this
+   * method — omitting it makes resolve() skip its own Supercharger-catalog
+   * tier and go straight to vehicle_settings/default, avoiding a redundant
+   * second catalog call for the same session.
+   */
+  private async resolveFallbackTariff(
+    sessionId: string,
+    vehicleId: string,
+    chargerType: string,
+    timestamp: Date,
+  ): Promise<{ rate: number; source: TariffSource }> {
+    if (!this.tariffResolver) {
+      throw new Error(`ChargingCostService: TariffResolverService not available (session ${sessionId})`);
+    }
+    return this.tariffResolver.resolve({ purpose: 'actual_cost', vehicleId, chargerType, timestamp });
+  }
+
+  /**
+   * DEAD CODE as of the TariffResolverService migration — no remaining call
+   * sites in this file. Left in place rather than deleted: the agreed
+   * migration order removes old tariff-resolution snippets in the final
+   * cleanup pass (docs/calculations/tariff-resolver.md), only after all
+   * five consumers have moved over, not one at a time.
+   *
    * Returns the effective Supercharger rate for a given session start time,
    * applying the user's configured off-peak schedule when available.
    *
