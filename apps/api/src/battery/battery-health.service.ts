@@ -1,5 +1,4 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { REDIS_CLIENT } from '../infra/redis.provider';
 import type Redis from 'ioredis';
@@ -30,11 +29,19 @@ export class BatteryHealthService {
   // ── Cron ──────────────────────────────────────────────────────────────────
 
   /**
-   * Daily capacity backfill at 03:30 UTC — 30 min after BatteryAnalyticsService
-   * cron (03:00) so the two heavy scans don't overlap.
-   * Processes ALL historical sessions (no take limit) for better baseline accuracy.
+   * DISABLED 2026-09-10 — BatteryAnalyticsService.updateBatteryMetrics() is
+   * now the sole canonical writer to BatteryHealth (see docs/calculations/
+   * battery-health.md "Canonical engine"). This service (Engine A) is kept
+   * as legacy/comparison-only per that decision; its @Cron trigger is
+   * removed so it can no longer race BatteryAnalyticsService's own 03:00
+   * UTC cron to write the "latest" row. The method itself is left callable
+   * (e.g. for manual comparison via scripts/compare-battery-health-engines.ts)
+   * — only the automatic schedule is disabled.
+   *
+   * Previously: daily capacity backfill at 03:30 UTC — 30 min after
+   * BatteryAnalyticsService's cron (03:00) so the two heavy scans didn't
+   * overlap. Processes ALL historical sessions (no take limit).
    */
-  @Cron('30 3 * * *')
   async scheduledCapacityBackfill(): Promise<void> {
     if (!isWorkerRole()) return;
     const vehicles = await this.prisma.vehicle.findMany({

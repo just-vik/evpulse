@@ -130,13 +130,13 @@ export class BatteryController {
     @Request() req: any,
   ) {
     await this.vehiclesService.findOne(vehicleId, req.user.id);
-    // Запустить продвинутую аналитику + простую оценку по зарядкам
+    // BatteryAnalyticsService is the sole canonical writer to BatteryHealth
+    // (see docs/calculations/battery-health.md "Canonical engine") --
+    // this no longer also calls batteryHealthService.estimateCapacityFromCharging(),
+    // which would write a second, competing row for the same recalculation.
     await this.batteryAnalyticsService.updateBatteryMetrics(vehicleId).catch(
       () => undefined,
     );
-    await this.batteryHealthService
-      .estimateCapacityFromCharging(vehicleId)
-      .catch(() => undefined);
     return this.batteryAnalyticsService.getBatteryHealth(vehicleId);
   }
 }
