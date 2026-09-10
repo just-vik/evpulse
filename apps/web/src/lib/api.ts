@@ -367,6 +367,7 @@ export const apiClient = {
     command:   string,
     params:    Record<string, unknown>,
     token:     string,
+    idempotencyKey?: string,
   ): Promise<VehicleCommand> {
     const ROUTES: Record<string, string> = {
       'lock':           'lock',
@@ -394,8 +395,9 @@ export const apiClient = {
     return apiCall(
       `/api/v1/vehicles/${vehicleId}/commands/${route}`,
       {
-        method: 'POST',
-        body:   Object.keys(params ?? {}).length ? JSON.stringify(params) : undefined,
+        method:  'POST',
+        headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+        body:    Object.keys(params ?? {}).length ? JSON.stringify(params) : undefined,
       },
       token,
     )

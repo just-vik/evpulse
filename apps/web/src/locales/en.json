@@ -940,7 +940,8 @@
       "failed": "Failed to execute command",
       "rateLimit": "Too many commands — please wait a moment",
       "unconfirmed": "Command status not confirmed",
-      "networkError": "Could not confirm the command was sent"
+      "networkError": "Could not confirm the command was sent",
+      "duplicate": "This command is already in progress"
     },
     "presets": {
       "title": "My Presets",

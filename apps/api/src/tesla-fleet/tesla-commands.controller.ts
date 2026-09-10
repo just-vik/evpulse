@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Body,
+  Headers,
   UseGuards,
   Req,
   Logger,
@@ -55,6 +56,12 @@ import { AuditLogService } from '../events/audit-log.service';
 export class TeslaCommandsController {
   private readonly logger = new Logger(TeslaCommandsController.name);
 
+  // P1.6b: window a client's Idempotency-Key stays valid for. Must comfortably
+  // cover the reconciliation delays useVehicleCommands.ts waits before
+  // treating a command's outcome as resolved (up to ~8s for wake), plus
+  // realistic time for a user to notice a stuck/timed-out command and retry.
+  private readonly IDEMPOTENCY_TTL_SECONDS = 120;
+
   constructor(
     private teslaFleet: TeslaFleetService,
     private teslaOAuth: TeslaOAuthService,
@@ -88,6 +95,59 @@ export class TeslaCommandsController {
   }
 
   /**
+   * P1.6b: dedup a side-effecting call against Tesla by client-supplied
+   * Idempotency-Key. First request with a given key claims it (Redis SETNX)
+   * and runs `fn`; the result is cached under that key so a resend (after a
+   * lost/timed-out response) replays it instead of calling Tesla again. A
+   * concurrent resend that arrives while the first is still in flight gets
+   * a 409, not a second Tesla call. On failure the claim is released
+   * immediately — a definite failure didn't reach/execute on Tesla, so a
+   * retry (same or new key) must be free to actually try again rather than
+   * wait out the full TTL.
+   */
+  private async withIdempotency<T>(
+    userId: string,
+    idempotencyKey: string | undefined,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    if (!idempotencyKey) return fn();
+
+    const key = `idem:cmd:${userId}:${idempotencyKey}`;
+    const claimed = await this.rawRedis.set(
+      key,
+      JSON.stringify({ status: 'pending' }),
+      'EX',
+      this.IDEMPOTENCY_TTL_SECONDS,
+      'NX',
+    );
+
+    if (claimed !== 'OK') {
+      const existing = await this.rawRedis.get(key);
+      if (existing) {
+        try {
+          const parsed = JSON.parse(existing);
+          if (parsed.status === 'done') return parsed.body as T;
+        } catch {
+          // malformed cache entry — fall through to conflict below
+        }
+      }
+      throw new HttpException(
+        { statusCode: HttpStatus.CONFLICT, message: 'This command is already being processed' },
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    try {
+      const result = await fn();
+      await this.rawRedis.set(key, JSON.stringify({ status: 'done', body: result }), 'EX', this.IDEMPOTENCY_TTL_SECONDS);
+      return result;
+    } catch (error) {
+      await this.rawRedis.del(key).catch(() => {});
+      throw error;
+    }
+  }
+
+  /**
    * Thin wrapper: verify ownership + get token + run command + handle errors uniformly.
    * Also records command history on success/failure.
    */
@@ -98,38 +158,41 @@ export class TeslaCommandsController {
     fn: (teslaVehicleId: string, accessToken: string) => Promise<any>,
     params?: any,
     presetId?: string,
+    idempotencyKey?: string,
   ): Promise<any> {
-    try {
-      const { teslaVehicleId } = await this.verifyVehicleOwnership(vehicleId, userId);
-      const accessToken = await this.teslaOAuth.getValidAccessToken(userId);
-      const result = await fn(teslaVehicleId, accessToken);
-      this.logger.log(`[${label}] OK vehicle=${vehicleId} user=${userId}`);
-      this.commandsService.recordHistory({ userId, vehicleId, presetId, command: label, params, status: 'success', result }).catch(() => {});
-      void this.apiUsage?.trackCommand(vehicleId).catch(() => {});
-      this.auditLog.record({
-        userId,
-        type: 'vehicle.command',
-        action: `vehicle.command.${label}`,
-        targetType: 'vehicle',
-        targetId: vehicleId,
-        metadata: params ? { params } : undefined,
-      });
-      return { success: true, result };
-    } catch (error: any) {
-      if (error instanceof HttpException) throw error;
-      const msg: string = error?.message ?? 'Unknown error';
-      this.logger.error(`[${label}] FAILED vehicle=${vehicleId}: ${msg}`);
-      this.commandsService.recordHistory({ userId, vehicleId, presetId, command: label, params, status: 'failed', error: msg }).catch(() => {});
-      this.auditLog.record({
-        userId,
-        type: 'vehicle.command',
-        action: `vehicle.command.${label}.failed`,
-        targetType: 'vehicle',
-        targetId: vehicleId,
-        metadata: { error: msg, ...(params ? { params } : {}) },
-      });
-      throw new HttpException(msg, this.commandHttpStatus(error));
-    }
+    return this.withIdempotency(userId, idempotencyKey, async () => {
+      try {
+        const { teslaVehicleId } = await this.verifyVehicleOwnership(vehicleId, userId);
+        const accessToken = await this.teslaOAuth.getValidAccessToken(userId);
+        const result = await fn(teslaVehicleId, accessToken);
+        this.logger.log(`[${label}] OK vehicle=${vehicleId} user=${userId}`);
+        this.commandsService.recordHistory({ userId, vehicleId, presetId, command: label, params, status: 'success', result }).catch(() => {});
+        void this.apiUsage?.trackCommand(vehicleId).catch(() => {});
+        this.auditLog.record({
+          userId,
+          type: 'vehicle.command',
+          action: `vehicle.command.${label}`,
+          targetType: 'vehicle',
+          targetId: vehicleId,
+          metadata: params ? { params } : undefined,
+        });
+        return { success: true, result };
+      } catch (error: any) {
+        if (error instanceof HttpException) throw error;
+        const msg: string = error?.message ?? 'Unknown error';
+        this.logger.error(`[${label}] FAILED vehicle=${vehicleId}: ${msg}`);
+        this.commandsService.recordHistory({ userId, vehicleId, presetId, command: label, params, status: 'failed', error: msg }).catch(() => {});
+        this.auditLog.record({
+          userId,
+          type: 'vehicle.command',
+          action: `vehicle.command.${label}.failed`,
+          targetType: 'vehicle',
+          targetId: vehicleId,
+          metadata: { error: msg, ...(params ? { params } : {}) },
+        });
+        throw new HttpException(msg, this.commandHttpStatus(error));
+      }
+    });
   }
 
   /**
@@ -169,26 +232,26 @@ export class TeslaCommandsController {
 
   @Post(':id/commands/lock')
   @UseGuards(AuthGuard('jwt'), VehicleCommandThrottleGuard)
-  lock(@Param('id') v: string, @Req() req: any) {
-    return this.runCmd(v, req.user.id, 'lock', (id, tok) => this.teslaFleet.lockVehicle(id, tok));
+  lock(@Param('id') v: string, @Req() req: any, @Headers('idempotency-key') idk?: string) {
+    return this.runCmd(v, req.user.id, 'lock', (id, tok) => this.teslaFleet.lockVehicle(id, tok), undefined, undefined, idk);
   }
 
   @Post(':id/commands/unlock')
   @UseGuards(AuthGuard('jwt'), VehicleCommandThrottleGuard)
-  unlock(@Param('id') v: string, @Req() req: any) {
-    return this.runCmd(v, req.user.id, 'unlock', (id, tok) => this.teslaFleet.unlockVehicle(id, tok));
+  unlock(@Param('id') v: string, @Req() req: any, @Headers('idempotency-key') idk?: string) {
+    return this.runCmd(v, req.user.id, 'unlock', (id, tok) => this.teslaFleet.unlockVehicle(id, tok), undefined, undefined, idk);
   }
 
   @Post(':id/commands/start-charging')
   @UseGuards(AuthGuard('jwt'), VehicleCommandThrottleGuard)
-  startCharging(@Param('id') v: string, @Req() req: any) {
-    return this.runCmd(v, req.user.id, 'start-charging', (id, tok) => this.teslaFleet.startCharging(id, tok));
+  startCharging(@Param('id') v: string, @Req() req: any, @Headers('idempotency-key') idk?: string) {
+    return this.runCmd(v, req.user.id, 'start-charging', (id, tok) => this.teslaFleet.startCharging(id, tok), undefined, undefined, idk);
   }
 
   @Post(':id/commands/stop-charging')
   @UseGuards(AuthGuard('jwt'), VehicleCommandThrottleGuard)
-  stopCharging(@Param('id') v: string, @Req() req: any) {
-    return this.runCmd(v, req.user.id, 'stop-charging', (id, tok) => this.teslaFleet.stopCharging(id, tok));
+  stopCharging(@Param('id') v: string, @Req() req: any, @Headers('idempotency-key') idk?: string) {
+    return this.runCmd(v, req.user.id, 'stop-charging', (id, tok) => this.teslaFleet.stopCharging(id, tok), undefined, undefined, idk);
   }
 
   @Post(':id/commands/charge-limit')
@@ -197,12 +260,14 @@ export class TeslaCommandsController {
     @Param('id') v: string,
     @Body() dto: { percent: number },
     @Req() req: any,
+    @Headers('idempotency-key') idk?: string,
   ) {
     if (dto.percent < 0 || dto.percent > 100) {
       throw new HttpException('Charge limit must be between 0 and 100', HttpStatus.BAD_REQUEST);
     }
     return this.runCmd(v, req.user.id, 'charge-limit', (id, tok) =>
       this.teslaFleet.setChargeLimit(id, dto.percent, tok),
+      undefined, undefined, idk,
     );
   }
 
@@ -212,12 +277,13 @@ export class TeslaCommandsController {
     @Param('id') v: string,
     @Body() dto: { driverTemp?: number; passengerTemp?: number; action?: string },
     @Req() req: any,
+    @Headers('idempotency-key') idk?: string,
   ) {
     if (dto.action === 'start') {
-      return this.runCmd(v, req.user.id, 'climate-start', (id, tok) => this.teslaFleet.startClimate(id, tok));
+      return this.runCmd(v, req.user.id, 'climate-start', (id, tok) => this.teslaFleet.startClimate(id, tok), undefined, undefined, idk);
     }
     if (dto.action === 'stop') {
-      return this.runCmd(v, req.user.id, 'climate-stop', (id, tok) => this.teslaFleet.stopClimate(id, tok));
+      return this.runCmd(v, req.user.id, 'climate-stop', (id, tok) => this.teslaFleet.stopClimate(id, tok), undefined, undefined, idk);
     }
     if (dto.driverTemp != null || dto.passengerTemp != null) {
       const driverTemp    = dto.driverTemp    ?? 21;
@@ -227,6 +293,7 @@ export class TeslaCommandsController {
       }
       return this.runCmd(v, req.user.id, 'climate-temp', (id, tok) =>
         this.teslaFleet.setClimate(id, driverTemp, passengerTemp, tok),
+        undefined, undefined, idk,
       );
     }
     throw new HttpException('Invalid climate parameters', HttpStatus.BAD_REQUEST);
@@ -234,26 +301,26 @@ export class TeslaCommandsController {
 
   @Post(':id/commands/flash-lights')
   @UseGuards(AuthGuard('jwt'), VehicleCommandThrottleGuard)
-  flashLights(@Param('id') v: string, @Req() req: any) {
-    return this.runCmd(v, req.user.id, 'flash-lights', (id, tok) => this.teslaFleet.flashLights(id, tok));
+  flashLights(@Param('id') v: string, @Req() req: any, @Headers('idempotency-key') idk?: string) {
+    return this.runCmd(v, req.user.id, 'flash-lights', (id, tok) => this.teslaFleet.flashLights(id, tok), undefined, undefined, idk);
   }
 
   @Post(':id/commands/honk')
   @UseGuards(AuthGuard('jwt'), VehicleCommandThrottleGuard)
-  honkHorn(@Param('id') v: string, @Req() req: any) {
-    return this.runCmd(v, req.user.id, 'honk', (id, tok) => this.teslaFleet.honkHorn(id, tok));
+  honkHorn(@Param('id') v: string, @Req() req: any, @Headers('idempotency-key') idk?: string) {
+    return this.runCmd(v, req.user.id, 'honk', (id, tok) => this.teslaFleet.honkHorn(id, tok), undefined, undefined, idk);
   }
 
   @Post(':id/commands/frunk')
   @UseGuards(AuthGuard('jwt'), VehicleCommandThrottleGuard)
-  frunk(@Param('id') v: string, @Req() req: any) {
-    return this.runCmd(v, req.user.id, 'frunk', (id, tok) => this.teslaFleet.openFrunk(id, tok));
+  frunk(@Param('id') v: string, @Req() req: any, @Headers('idempotency-key') idk?: string) {
+    return this.runCmd(v, req.user.id, 'frunk', (id, tok) => this.teslaFleet.openFrunk(id, tok), undefined, undefined, idk);
   }
 
   @Post(':id/commands/trunk')
   @UseGuards(AuthGuard('jwt'), VehicleCommandThrottleGuard)
-  trunk(@Param('id') v: string, @Req() req: any) {
-    return this.runCmd(v, req.user.id, 'trunk', (id, tok) => this.teslaFleet.openTrunk(id, tok));
+  trunk(@Param('id') v: string, @Req() req: any, @Headers('idempotency-key') idk?: string) {
+    return this.runCmd(v, req.user.id, 'trunk', (id, tok) => this.teslaFleet.openTrunk(id, tok), undefined, undefined, idk);
   }
 
   @Post(':id/commands/windows')
@@ -262,6 +329,7 @@ export class TeslaCommandsController {
     @Param('id') v: string,
     @Body() dto: { action: 'vent' | 'close' },
     @Req() req: any,
+    @Headers('idempotency-key') idk?: string,
   ) {
     if (dto.action !== 'vent' && dto.action !== 'close') {
       throw new HttpException('action must be vent or close', HttpStatus.BAD_REQUEST);
@@ -270,6 +338,7 @@ export class TeslaCommandsController {
       dto.action === 'vent'
         ? this.teslaFleet.ventWindows(id, tok)
         : this.teslaFleet.closeWindows(id, tok),
+      undefined, undefined, idk,
     );
   }
 
@@ -279,9 +348,11 @@ export class TeslaCommandsController {
     @Param('id') v: string,
     @Body() dto: { on: boolean },
     @Req() req: any,
+    @Headers('idempotency-key') idk?: string,
   ) {
     return this.runCmd(v, req.user.id, `sentry-${dto.on ? 'on' : 'off'}`, (id, tok) =>
       this.teslaFleet.setSentryMode(id, dto.on, tok),
+      undefined, undefined, idk,
     );
   }
 
@@ -291,12 +362,14 @@ export class TeslaCommandsController {
     @Param('id') v: string,
     @Body() dto: { amps: number },
     @Req() req: any,
+    @Headers('idempotency-key') idk?: string,
   ) {
     if (dto.amps < 0 || dto.amps > 48) {
       throw new HttpException('amps must be between 0 and 48', HttpStatus.BAD_REQUEST);
     }
     return this.runCmd(v, req.user.id, `charging-amps-${dto.amps}`, (id, tok) =>
       this.teslaFleet.setChargingAmps(id, dto.amps, tok),
+      undefined, undefined, idk,
     );
   }
 
@@ -306,6 +379,7 @@ export class TeslaCommandsController {
     @Param('id') v: string,
     @Body() dto: { seat: number; level: number },
     @Req() req: any,
+    @Headers('idempotency-key') idk?: string,
   ) {
     if (dto.seat < 0 || dto.seat > 5) {
       throw new HttpException('seat must be 0-5 (0=driver, 1=passenger, 2-5=rear)', HttpStatus.BAD_REQUEST);
@@ -315,6 +389,7 @@ export class TeslaCommandsController {
     }
     return this.runCmd(v, req.user.id, `seat-heater-${dto.seat}-${dto.level}`, (id, tok) =>
       this.teslaFleet.setSeatHeater(id, dto.seat, dto.level, tok),
+      undefined, undefined, idk,
     );
   }
 
@@ -324,9 +399,11 @@ export class TeslaCommandsController {
     @Param('id') v: string,
     @Body() dto: { on: boolean; fanOnly?: boolean },
     @Req() req: any,
+    @Headers('idempotency-key') idk?: string,
   ) {
     return this.runCmd(v, req.user.id, `cop-${dto.on ? 'on' : 'off'}`, (id, tok) =>
       this.teslaFleet.setCabinOverheatProtection(id, dto.on, dto.fanOnly ?? false, tok),
+      undefined, undefined, idk,
     );
   }
 
@@ -336,12 +413,14 @@ export class TeslaCommandsController {
     @Param('id') v: string,
     @Body() dto: { enabled: boolean; timeMinutes: number },
     @Req() req: any,
+    @Headers('idempotency-key') idk?: string,
   ) {
     if (dto.timeMinutes < 0 || dto.timeMinutes > 1439) {
       throw new HttpException('timeMinutes must be 0-1439 (minutes from midnight)', HttpStatus.BAD_REQUEST);
     }
     return this.runCmd(v, req.user.id, `scheduled-charging`, (id, tok) =>
       this.teslaFleet.setScheduledCharging(id, dto.enabled, dto.timeMinutes, tok),
+      undefined, undefined, idk,
     );
   }
 
@@ -351,40 +430,44 @@ export class TeslaCommandsController {
     @Param('id') v: string,
     @Body() dto: { enabled: boolean; departureTimeMinutes: number },
     @Req() req: any,
+    @Headers('idempotency-key') idk?: string,
   ) {
     if (dto.departureTimeMinutes < 0 || dto.departureTimeMinutes > 1439) {
       throw new HttpException('departureTimeMinutes must be 0-1439 (minutes from midnight)', HttpStatus.BAD_REQUEST);
     }
     return this.runCmd(v, req.user.id, `scheduled-departure`, (id, tok) =>
       this.teslaFleet.setScheduledDeparture(id, dto.enabled, dto.departureTimeMinutes, tok),
+      undefined, undefined, idk,
     );
   }
 
   @Post(':id/commands/wake')
   @UseGuards(AuthGuard('jwt'), VehicleCommandThrottleGuard)
-  async wake(@Param('id') vehicleId: string, @Req() req: any) {
+  async wake(@Param('id') vehicleId: string, @Req() req: any, @Headers('idempotency-key') idk?: string) {
     const userId = req.user.id;
     try {
-      const { teslaVehicleId } = await this.verifyVehicleOwnership(vehicleId, userId);
+      return await this.withIdempotency(userId, idk, async () => {
+        const { teslaVehicleId } = await this.verifyVehicleOwnership(vehicleId, userId);
 
-      // Set Redis hint + state-machine BEFORE the actual wake call so the
-      // dashboard immediately shows "waking" even if the car is slow to respond.
-      const wakeHintKey = `tesla:wake-hint:${vehicleId}`;
-      await this.redis.set(wakeHintKey, new Date().toISOString(), 'EX', 180);
-      await this.stateMachine.setWaking(vehicleId);
+        // Set Redis hint + state-machine BEFORE the actual wake call so the
+        // dashboard immediately shows "waking" even if the car is slow to respond.
+        const wakeHintKey = `tesla:wake-hint:${vehicleId}`;
+        await this.redis.set(wakeHintKey, new Date().toISOString(), 'EX', 180);
+        await this.stateMachine.setWaking(vehicleId);
 
-      const accessToken = await this.teslaOAuth.getValidAccessToken(userId);
-      const result = await this.teslaFleet.wakeVehicle(teslaVehicleId, accessToken);
+        const accessToken = await this.teslaOAuth.getValidAccessToken(userId);
+        const result = await this.teslaFleet.wakeVehicle(teslaVehicleId, accessToken);
 
-      // Invalidate status cache so next frontend poll returns fresh data immediately
-      await this.rawRedis.del(`vehicle:status:${vehicleId}`);
+        // Invalidate status cache so next frontend poll returns fresh data immediately
+        await this.rawRedis.del(`vehicle:status:${vehicleId}`);
 
-      // Restart adaptive polling with a short interval so data is fetched within 15s
-      this.telemetryFetcher.stopAdaptivePolling(vehicleId);
-      this.telemetryFetcher.startAdaptivePolling(vehicleId, userId);
+        // Restart adaptive polling with a short interval so data is fetched within 15s
+        this.telemetryFetcher.stopAdaptivePolling(vehicleId);
+        this.telemetryFetcher.startAdaptivePolling(vehicleId, userId);
 
-      this.logger.log(`[wake] OK vehicle=${vehicleId} user=${userId}`);
-      return { success: true, result };
+        this.logger.log(`[wake] OK vehicle=${vehicleId} user=${userId}`);
+        return { success: true, result };
+      });
     } catch (error: any) {
       if (error instanceof HttpException) throw error;
       const msg: string = error?.message ?? 'Unknown error';

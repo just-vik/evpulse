@@ -899,7 +899,8 @@
       "failed": "Befehl konnte nicht ausgeführt werden",
       "rateLimit": "Zu viele Befehle — bitte kurz warten",
       "unconfirmed": "Befehlsstatus nicht bestätigt",
-      "networkError": "Senden des Befehls konnte nicht bestätigt werden"
+      "networkError": "Senden des Befehls konnte nicht bestätigt werden",
+      "duplicate": "Dieser Befehl wird bereits ausgeführt"
     },
     "advanced": {
       "title": "Erweitert",

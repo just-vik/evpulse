@@ -17,6 +17,7 @@ export type CommandErrorCategory =
   | 'circuitOpen'
   | 'unconfirmed'
   | 'networkError'
+  | 'duplicate'
   | 'failed';
 
 export interface CommandErrorClassification {
@@ -35,6 +36,12 @@ export function classifyCommandError(err: { status?: number; message?: string })
 
   if (status === 429) {
     return { category: 'rateLimit', messageKey: 'vehicleDetail.commands.rateLimit', refresh: 'none' };
+  }
+  if (status === 409) {
+    // Same idempotency key already in flight (e.g. a second tab, or a
+    // resend racing the original request) — something is genuinely
+    // pending, so a status refresh is worth it, but nothing new was sent.
+    return { category: 'duplicate', messageKey: 'vehicleDetail.commands.duplicate', refresh: 'immediate' };
   }
   if (status === 503 || msg.includes('asleep') || msg.includes('sleep') || msg.includes('unavailable') || msg.includes('offline')) {
     return { category: 'unavailable', messageKey: 'vehicleDetail.commands.asleep', refresh: 'none' };
@@ -70,4 +77,15 @@ export const COMMAND_CONFIRM_POLICY: Record<string, ConfirmPolicy> = {
 export function needsConfirmation(actionId: string, isStaleOrOffline: boolean): boolean {
   const policy = COMMAND_CONFIRM_POLICY[actionId] ?? 'none';
   return policy === 'always' || (policy === 'stale' && isStaleOrOffline);
+}
+
+// P1.6b — idempotency key lifecycle. A key must be *reused* across a manual
+// retry only when the previous attempt's outcome to Tesla is genuinely
+// unknown (timed out, or the request may never have left the browser) —
+// that's the case the server-side dedup exists to protect. Every other
+// outcome (rate-limited, vehicle asleep, rejected, or a confirmed success)
+// means the previous key is fully resolved one way or another, so the next
+// send is a new logical attempt and should get its own key.
+export function shouldReuseIdempotencyKey(category: CommandErrorCategory): boolean {
+  return category === 'unconfirmed' || category === 'networkError';
 }
