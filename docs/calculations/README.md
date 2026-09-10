@@ -12,7 +12,7 @@ section for why that order matters.
 | File | Covers | Status |
 |---|---|---|
 | [`energy.md`](energy.md) | Trip energy, consumption (Wh/km) | Done |
-| `trips.md` | Trip detection, distance, quality score | Pending |
+| [`trips.md`](trips.md) | Trip detection state machine, start/end, distance, gaps | Done |
 | `charging.md` | Charging energy, charging cost, charging efficiency | Pending |
 | `battery-health.md` | SOH / degradation | Pending |
 | `range.md` | Range prediction | Pending |
@@ -55,7 +55,7 @@ Concretely:
 - **Charging energy**: `charge_energy_added` delta (Tesla) → power integral (calculated). See `charging.md` (pending).
 - **Charging cost**: Tesla Supercharger catalog API (measured market rate) → user-configured tariff → hardcoded default (€0.32 home / €0.45 public). See `charging.md`.
 - **Trip energy**: power integral only — **no fallback tier exists**. See [`energy.md`](energy.md#fallbacks).
-- **Trip distance**: GPS (default) → odometer delta (fallback, only when GPS underestimates). See [`energy.md`](energy.md#current-implementation) and `trips.md` (pending).
+- **Trip distance**: GPS (default) → odometer delta (fallback, only when GPS underestimates). See [`trips.md`](trips.md#distance).
 
 Any new metric should follow this same three-tier shape where a Tesla signal
 exists, explicitly document which tier is live for a given result, and

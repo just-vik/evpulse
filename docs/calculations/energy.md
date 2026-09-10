@@ -112,8 +112,8 @@ not as "unknown, estimate some other way." See Edge cases below; this is a
 real gap relative to the measured/estimated/unknown model in
 [`README.md`](README.md), not an intentional fallback tier.
 
-Code: [`trip-detector.service.ts:1040–1071`](../../apps/api/src/trips/trip-detector.service.ts#L1040-L1071)
-(distance fallback, for contrast — energy itself has none)
+Distance (the other half of consumption) *does* have a real GPS→odometer
+fallback — see [`trips.md`](trips.md#distance), not duplicated here.
 
 ## Data-quality rules
 
