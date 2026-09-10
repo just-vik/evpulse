@@ -5,6 +5,40 @@ import { PrismaService } from '../prisma/prisma.service';
 import { REDIS_CLIENT } from '../infra/redis.provider';
 import type Redis from 'ioredis';
 import { isValidTrip } from '../ml/trip-validator';
+import {
+  BatteryHealthResult,
+  BatteryHealthSource,
+  BATTERY_HEALTH_ALGORITHM_VERSION,
+} from './battery-health-result';
+
+/** One estimator's raw result before it's blended: the SOH value plus how
+ *  many underlying observations (sessions/trips/range points) produced it —
+ *  see BatteryHealthResult.observationCount in battery-health-result.ts. */
+interface SohEstimate {
+  soh: number;
+  n: number;
+}
+
+/** computeBatteryHealthResult()'s return shape: the public
+ *  BatteryHealthResult contract fields, plus persistence-only detail that
+ *  matches the existing BatteryHealth Prisma columns exactly (unchanged by
+ *  this refactor — see updateBatteryMetrics()). */
+interface BatteryHealthComputation extends BatteryHealthResult {
+  estimatedCapacityKwh: number;
+  nominalCapacityKwh: number;
+  degradationPercent: number;
+  tripSoh: number | null;
+  chargingSoh: number | null;
+  ratedRangeSoh: number | null;
+  avgBatteryTempC: number | null;
+  cycles: number | null;
+  wltpRangeKm: number;
+  wltpIsFromSpec: boolean;
+  /** '+'-joined method names (e.g. 'range+charging+trip') for logging only
+   *  — `source` collapses this to 'weighted_median' once >1 method agreed,
+   *  which is what persists, but the log line keeps the fuller detail. */
+  methodNames: string;
+}
 
 /**
  * BatteryAnalyticsService - Production-grade battery SOH analysis
@@ -278,14 +312,27 @@ export class BatteryAnalyticsService implements OnModuleInit {
    * Calculate and store current SOH for a vehicle.
    * Called after each telemetry batch or charging session completion.
    */
-  async updateBatteryMetrics(vehicleId: string): Promise<void> {
+  /**
+   * Computes a canonical BatteryHealthResult without persisting anything —
+   * the typed adapter around this service's three estimators (see
+   * docs/calculations/data-quality.md "Proposed future contract" and
+   * battery-health-result.ts). updateBatteryMetrics() below is now a thin
+   * wrapper: calls this, then persists exactly the same BatteryHealth row
+   * shape as before the refactor. No formula, weight, clamp, or trigger
+   * changed — this is a pure extraction.
+   *
+   * Returns null in exactly the two cases updateBatteryMetrics previously
+   * returned early without writing: no method produced a result, or the
+   * blended estimate is below the 70% floor (treated as bad data).
+   */
+  async computeBatteryHealthResult(vehicleId: string): Promise<BatteryHealthComputation | null> {
     const vehicle = await this.prisma.vehicle.findUnique({
       where: { id: vehicleId },
       include: { vehicleSpec: true },
     });
     if (!vehicle) {
       this.logger.warn(`Vehicle ${vehicleId} not found`);
-      return;
+      return null;
     }
 
     // Try to lock both baseline tiers (no-op if already locked or not enough data)
@@ -311,7 +358,7 @@ export class BatteryAnalyticsService implements OnModuleInit {
       ?? (nominalKwh * 1000) / 169;
     const wltpIsFromSpec = vehicle.vehicleSpec?.rangeWltp != null;
 
-    const [tripSoh, chargingSoh, rangeSoh, avgTemp, currentCycles] = await Promise.all([
+    const [tripEst, chargingEst, rangeEst, avgTemp, currentCycles] = await Promise.all([
       this.calculateSohFromTrips(vehicleId, usableKwh),
       this.calculateSohFromCharging(vehicleId, usableKwh),
       this.calculateSohFromRange(vehicleId, wltpRangeKm),
@@ -319,14 +366,14 @@ export class BatteryAnalyticsService implements OnModuleInit {
       this.getEffectiveCycles(vehicleId),
     ]);
 
-    const validMethods: { soh: number; weight: number; name: string }[] = [];
-    if (rangeSoh !== null) validMethods.push({ soh: rangeSoh, weight: 1.0, name: 'range' });
-    if (chargingSoh !== null) validMethods.push({ soh: chargingSoh, weight: 0.9, name: 'charging' });
-    if (tripSoh !== null) validMethods.push({ soh: tripSoh, weight: 0.8, name: 'trip' });
+    const validMethods: { soh: number; weight: number; name: BatteryHealthSource; n: number }[] = [];
+    if (rangeEst !== null) validMethods.push({ soh: rangeEst.soh, weight: 1.0, name: 'range', n: rangeEst.n });
+    if (chargingEst !== null) validMethods.push({ soh: chargingEst.soh, weight: 0.9, name: 'charging', n: chargingEst.n });
+    if (tripEst !== null) validMethods.push({ soh: tripEst.soh, weight: 0.8, name: 'trip', n: tripEst.n });
 
     if (validMethods.length === 0) {
       this.logger.debug(`Not enough data for SOH calculation on vehicle ${vehicleId}`);
-      return;
+      return null;
     }
 
     // Weighted median across all available methods
@@ -345,7 +392,7 @@ export class BatteryAnalyticsService implements OnModuleInit {
         `SOH ${tempCorrectedSoh.toFixed(1)}% < 70% for vehicle ${vehicleId} — ` +
         `likely bad trip data or wrong nominal. Skipping record.`,
       );
-      return;
+      return null;
     }
     const finalSoh = Math.min(MAX_SOH, Math.max(70, tempCorrectedSoh));
     const estimatedCapacity = (finalSoh / 100) * usableKwh;
@@ -353,30 +400,65 @@ export class BatteryAnalyticsService implements OnModuleInit {
 
     const confidence = Math.min(1.0, validMethods.length / 3);
     const methodNames = validMethods.map(m => m.name).join('+');
+    const observationCount = validMethods.reduce((sum, m) => sum + m.n, 0);
+
+    return {
+      // ── public BatteryHealthResult contract ──
+      value: Math.round(finalSoh * 100) / 100,
+      rawValue: Math.round(tempCorrectedSoh * 100) / 100,
+      source: validMethods.length > 1 ? 'weighted_median' : validMethods[0].name,
+      observationCount,
+      methodCount: validMethods.length,
+      confidence: Math.round(confidence * 100) / 100,
+      algorithmVersion: BATTERY_HEALTH_ALGORITHM_VERSION,
+      // ── persistence-only detail, matches the existing BatteryHealth columns ──
+      estimatedCapacityKwh: Math.round(estimatedCapacity * 10) / 10,
+      nominalCapacityKwh: usableKwh,
+      degradationPercent: Math.round(degradation * 100) / 100,
+      tripSoh: tripEst !== null ? Math.round(Math.min(100, tripEst.soh) * 100) / 100 : null,
+      chargingSoh: chargingEst !== null ? Math.round(Math.min(100, chargingEst.soh) * 100) / 100 : null,
+      ratedRangeSoh: rangeEst !== null ? Math.round(Math.min(100, rangeEst.soh) * 100) / 100 : null,
+      avgBatteryTempC: avgTemp,
+      cycles: currentCycles != null ? Math.round(currentCycles * 10) / 10 : null,
+      wltpRangeKm,
+      wltpIsFromSpec,
+      methodNames,
+    };
+  }
+
+  /**
+   * Calculate and store current SOH for a vehicle.
+   * Called after each charging session or trip completion, and by the
+   * daily cron. Thin wrapper around computeBatteryHealthResult() — see
+   * that method for the actual calculation.
+   */
+  async updateBatteryMetrics(vehicleId: string): Promise<void> {
+    const result = await this.computeBatteryHealthResult(vehicleId);
+    if (!result) return;
 
     await this.prisma.batteryHealth.create({
       data: {
         vehicleId,
-        sohPercent: Math.round(finalSoh * 100) / 100,
-        estimatedCapacityKwh: Math.round(estimatedCapacity * 10) / 10,
-        nominalCapacityKwh: usableKwh,
-        degradationPercent: Math.round(degradation * 100) / 100,
-        method: validMethods.length > 1 ? 'weighted_median' : methodNames,
-        confidenceScore: Math.round(confidence * 100) / 100,
-        sampleCount: validMethods.length,
-        tripSoh: tripSoh !== null ? Math.round(Math.min(100, tripSoh) * 100) / 100 : null,
-        chargingSoh: chargingSoh !== null ? Math.round(Math.min(100, chargingSoh) * 100) / 100 : null,
-        ratedRangeSoh: rangeSoh !== null ? Math.round(Math.min(100, rangeSoh) * 100) / 100 : null,
-        avgBatteryTempC: avgTemp,
-        cycles: currentCycles != null ? Math.round(currentCycles * 10) / 10 : null,
+        sohPercent: result.value,
+        estimatedCapacityKwh: result.estimatedCapacityKwh,
+        nominalCapacityKwh: result.nominalCapacityKwh,
+        degradationPercent: result.degradationPercent,
+        method: result.source,
+        confidenceScore: result.confidence,
+        sampleCount: result.methodCount,
+        tripSoh: result.tripSoh,
+        chargingSoh: result.chargingSoh,
+        ratedRangeSoh: result.ratedRangeSoh,
+        avgBatteryTempC: result.avgBatteryTempC,
+        cycles: result.cycles,
       } as any,
     });
 
     this.logger.log(
-      `SOH updated for vehicle ${vehicleId}: ${finalSoh.toFixed(1)}% (${estimatedCapacity.toFixed(1)}kWh), ` +
-      `confidence=${confidence.toFixed(2)}, methods=[${methodNames}], ` +
-      `wltp=${wltpRangeKm.toFixed(0)}km(${wltpIsFromSpec ? 'spec' : 'estimated'}), ` +
-      `temp=${avgTemp ?? 'N/A'}°C, cycles=${currentCycles?.toFixed(0) ?? 'N/A'}`,
+      `SOH updated for vehicle ${vehicleId}: ${result.value.toFixed(1)}% (${result.estimatedCapacityKwh.toFixed(1)}kWh), ` +
+      `confidence=${result.confidence.toFixed(2)}, methods=[${result.methodNames}], ` +
+      `wltp=${result.wltpRangeKm.toFixed(0)}km(${result.wltpIsFromSpec ? 'spec' : 'estimated'}), ` +
+      `temp=${result.avgBatteryTempC ?? 'N/A'}°C, cycles=${result.cycles?.toFixed(0) ?? 'N/A'}`,
     );
   }
 
@@ -966,7 +1048,7 @@ export class BatteryAnalyticsService implements OnModuleInit {
    * wltpRangeKm: pre-computed from spec or estimated at 169 Wh/km.
    * Caller supplies it so the method stays side-effect free.
    */
-  private async calculateSohFromRange(vehicleId: string, wltpRangeKm: number): Promise<number | null> {
+  private async calculateSohFromRange(vehicleId: string, wltpRangeKm: number): Promise<SohEstimate | null> {
     const rows = await this.prisma.$queryRaw<Array<{ soc: number; rangeKm: number }>>`
       SELECT soc, "batteryRangeKm" as "rangeKm"
       FROM telemetry_points
@@ -987,7 +1069,7 @@ export class BatteryAnalyticsService implements OnModuleInit {
     const soh = (median / wltpRangeKm) * 100;
 
     if (soh < 50 || soh > 130) return null;
-    return soh;
+    return { soh, n: rows.length };
   }
 
   /**
@@ -1000,7 +1082,7 @@ export class BatteryAnalyticsService implements OnModuleInit {
    * - Distance > 20 km
    * - Result within [50%, 110%] of nominal
    */
-  private async calculateSohFromTrips(vehicleId: string, nominalKwh: number): Promise<number | null> {
+  private async calculateSohFromTrips(vehicleId: string, nominalKwh: number): Promise<SohEstimate | null> {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -1036,7 +1118,7 @@ export class BatteryAnalyticsService implements OnModuleInit {
 
     if (validCapacities.length < 2) return null;
 
-    return this.weightedMedian(validCapacities);
+    return { soh: this.weightedMedian(validCapacities), n: validCapacities.length };
   }
 
   /**
@@ -1051,7 +1133,7 @@ export class BatteryAnalyticsService implements OnModuleInit {
    * - DC charging efficiency applied: billing energy ≠ stored energy (93% efficiency)
    * - Result within [50%, 110%] of nominal
    */
-  private async calculateSohFromCharging(vehicleId: string, nominalKwh: number): Promise<number | null> {
+  private async calculateSohFromCharging(vehicleId: string, nominalKwh: number): Promise<SohEstimate | null> {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -1101,7 +1183,7 @@ export class BatteryAnalyticsService implements OnModuleInit {
 
     if (validCapacities.length < 2) return null;
 
-    return this.weightedMedianWeighted(validCapacities);
+    return { soh: this.weightedMedianWeighted(validCapacities), n: validCapacities.length };
   }
 
   /**
