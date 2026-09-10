@@ -16,7 +16,7 @@ section for why that order matters.
 | [`charging.md`](charging.md) | Charging session detection, energy source ladder, cost, efficiency | Done |
 | [`battery-health.md`](battery-health.md) | SOH / degradation estimate | Done |
 | [`range.md`](range.md) | Range prediction | Done |
-| `costs.md` | TCO / cost-per-km rollups | Pending — no implementation exists yet, will document as such |
+| [`costs.md`](costs.md) | Charging/trip/energy cost, cost-per-km, forecast (implemented); TCO, fleet economics (not implemented) | Done |
 | `data-quality.md` | Cross-cutting confidence/quality patterns, once enough specs exist to generalize from | Pending |
 
 ## Units
@@ -61,7 +61,15 @@ Any new metric should follow this same three-tier shape where a Tesla signal
 exists, explicitly document which tier is live for a given result, and
 persist *which tier won* — charging cost already does this (`costSource`
 column); charging energy computes the same choice but only logs it, doesn't
-persist it (documented gap in `charging.md`, pending).
+persist it (documented gap in [`charging.md`](charging.md#energy-source-selection)).
+
+**Tariff resolution specifically does not follow "one ladder, one
+implementation"** — [`costs.md`](costs.md#the-central-finding-five-independent-tariff-calculations-four-different-hardcoded-defaults)
+found five independently-authored tariff-resolution functions across five
+files, with four different hardcoded default rates (€0.25/€0.32/€0.35/€0.45)
+for the same "I don't know your real rate" fallback case. This is the
+clearest concrete argument in the whole audit for a single shared
+`TariffResolverService` before any further cost feature is built.
 
 ## Confidence model
 
@@ -84,11 +92,16 @@ documents the actual fragmentation, not an aspirational unification:
   high/medium/low thresholds (`>=0.80`/`>=0.60`) that don't match any other
   metric's boundaries. See [`range.md`](range.md#confidence).
 
-Four metrics, four different confidence formulas and scales, none sharing
-boundaries or meaning with another. This is the concrete case for
-[`data-quality.md`](README.md) once all specs exist — not to force a single
-number, but to at least document why they differ and whether any should
-converge.
+- **Costs**: no confidence score at all — the closest analogue is
+  `CostForecastService`'s `rateSource`/`dataSource` provenance strings,
+  which say *where a number came from*, not *how much to trust it*. See
+  [`costs.md`](costs.md#data-quality-rules--confidence).
+
+Four confidence formulas plus one confidence-shaped-but-isn't provenance
+label, none sharing boundaries or meaning with another. This is the
+concrete case for [`data-quality.md`](README.md) once all specs exist — not
+to force a single number, but to at least document why they differ and
+whether any should converge.
 
 Before building a unified `data-quality.md` cross-cutting model, the
 individual specs need to exist first — generalizing now would mean guessing
