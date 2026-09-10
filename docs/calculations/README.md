@@ -13,7 +13,7 @@ section for why that order matters.
 |---|---|---|
 | [`energy.md`](energy.md) | Trip energy, consumption (Wh/km) | Done |
 | [`trips.md`](trips.md) | Trip detection state machine, start/end, distance, gaps | Done |
-| `charging.md` | Charging energy, charging cost, charging efficiency | Pending |
+| [`charging.md`](charging.md) | Charging session detection, energy source ladder, cost, efficiency | Done |
 | `battery-health.md` | SOH / degradation | Pending |
 | `range.md` | Range prediction | Pending |
 | `costs.md` | TCO / cost-per-km rollups | Pending — no implementation exists yet, will document as such |
@@ -52,8 +52,8 @@ Configured default / hardcoded fallback
 ```
 
 Concretely:
-- **Charging energy**: `charge_energy_added` delta (Tesla) → power integral (calculated). See `charging.md` (pending).
-- **Charging cost**: Tesla Supercharger catalog API (measured market rate) → user-configured tariff → hardcoded default (€0.32 home / €0.45 public). See `charging.md`.
+- **Charging energy**: `charge_energy_added` delta (Tesla) → power integral (calculated). See [`charging.md`](charging.md#energy-source-selection).
+- **Charging cost**: Tesla Supercharger catalog API (measured market rate) → user-configured tariff → hardcoded default (€0.32 home / €0.45 public). See [`charging.md`](charging.md#cost).
 - **Trip energy**: power integral only — **no fallback tier exists**. See [`energy.md`](energy.md#fallbacks).
 - **Trip distance**: GPS (default) → odometer delta (fallback, only when GPS underestimates). See [`trips.md`](trips.md#distance).
 
@@ -78,7 +78,7 @@ documents the actual fragmentation, not an aspirational unification:
   `battery-health.md` (pending).
 - **Charging**: no numeric confidence at all — only a `costSource` /
   `chargerType` string indicating which pricing tier was used. See
-  `charging.md` (pending).
+  [`charging.md`](charging.md#data-quality-rules--confidence).
 
 Before building a unified `data-quality.md` cross-cutting model, the
 individual specs need to exist first — generalizing now would mean guessing
