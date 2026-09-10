@@ -2,8 +2,14 @@
 
 Status: **mixed** — this spec covers a *chain* of cost concepts, not one
 formula. Some levels are real and working; several don't exist. Verified
-against `apps/api/src` on `main` @ `856ffc8`. See [`README.md`](README.md)
+against `apps/api/src` on `main` @ `21ca2ef`. See [`README.md`](README.md)
 for shared conventions.
+
+**Revision note:** the original pass of this document (verified @ `856ffc8`)
+traced each implementation but not its actual consumer, and reported "four"
+hardcoded defaults. Tracing forward to the real callers (in particular
+`vehicle-analytics.controller.ts`) found a fifth, previously invisible
+default and corrected the tally — see "The central finding" below.
 
 ## Status by level
 
@@ -17,30 +23,52 @@ for shared conventions.
 | TCO (energy+maintenance+insurance+depreciation) | **NOT IMPLEMENTED** | — |
 | Fleet economics | **NOT IMPLEMENTED** | — (no fleet module exists at all, confirmed during the earlier metric-inventory pass) |
 
-## The central finding: five independent tariff calculations, four different hardcoded defaults
+## The central finding: five independent tariff-resolution paths, five different hardcoded defaults
 
 This is the most consequential thing found while writing this spec. Cost
 appears in five separate places in the codebase, **each with its own
-tariff-resolution logic**, none calling into a shared source of truth:
+tariff-resolution logic**, none calling into a shared source of truth —
+plus one further aggregation-only consumer that doesn't resolve a tariff
+itself but adds its own independent fallback for a different field
+(currency, not rate):
 
-| Implementation | Fallback chain | Hardcoded default |
-|---|---|---|
-| `ChargingCostService` (the real per-session engine, [`charging.md`](charging.md#cost)) | Supercharger catalog API → configured ToD rate → `thirdPartyRate`/`homeChargingRate` | `0.45` (public) / `0.32` (home) |
-| `VehicleAnalyticsService.getCostSummary` | persisted `session.costTotal`/`cost` → charger-type-keyword-matched `homeRate`/`pricePerKwh` | `pricePerKwh` param default `0.25` |
-| `CostForecastService.resolveRate` | weighted avg of ≥3 sessions with known `costTotal` → `homeChargingRate`/`chargingCost` setting | `0.25` |
-| `TripDetectorService` (trip finalize, `costTotal` field) | `homeChargingRate` → `chargingCost` setting | `0.25` |
-| `TripGapRecoveryService` (recovered trips) | `homeChargingRate` setting only | `0.35` |
+| # | Implementation | Fallback chain | Hardcoded default |
+|---|---|---|---|
+| 1 | `ChargingCostService` (the real per-session engine, [`charging.md`](charging.md#cost)) | Supercharger catalog API → configured ToD rate → `thirdPartyRate`/`homeChargingRate` | `€0.45` (public) / `€0.32` (home) |
+| 2 | `VehicleAnalyticsService.getCostSummary` (service signature) | persisted `session.costTotal`/`cost` → charger-type-keyword-matched `homeRate`/`pricePerKwh` | `pricePerKwh` param default `€0.25` — **but see below, this default is unreachable via the only controller that calls it** |
+| 2a | `vehicle-analytics.controller.ts`'s `GET .../cost-summary` handler | `?rate=` query param → hardcoded | **€0.13** |
+| 3 | `CostForecastService.resolveRate` | weighted avg of ≥3 sessions with known `costTotal` → `homeChargingRate`/`chargingCost` setting | `€0.25` |
+| 4 | `TripDetectorService` (trip finalize, `Trip.costTotal`) | `homeChargingRate` → `chargingCost` setting | `€0.25` |
+| 5 | `TripGapRecoveryService` (recovered trips, same `Trip.costTotal` field) | `homeChargingRate` setting only — **missing the `chargingCost` middle tier that #4 has** | `€0.35` |
+| — | `ChargingCostService.getMonthlyCostSummary` (aggregation only, not a resolver) | N/A for rate (sums already-persisted `costTotal`) — but resolves **currency** independently: first session's non-null `currency` → hardcoded | `'EUR'` |
 
-Four different default rates (`0.25`, `0.32`, `0.35`, `0.45`) for
-conceptually the same "I don't know your real rate" fallback, authored
-independently across five files. None of this is presented to the user as
-inconsistent today because each number only ever shows up in its own
-context — but a user comparing "cost per km" (from `VehicleAnalyticsService`,
-defaults to €0.25/kWh when uninformed) against a specific trip's `costTotal`
-(defaults to €0.25 too, but via a different code path with different
+**Five** different default rates now confirmed (`€0.13`, `€0.25`, `€0.32`,
+`€0.35`, `€0.45`) for conceptually the same "I don't know your real rate"
+fallback, authored independently — not four, as an earlier pass of this
+document said before the consumer-level trace was done. The **€0.13** in
+row 2a was found only by tracing forward from the service to its actual
+caller: `vehicle-analytics.controller.ts:78` does
+`const pricePerKwh = rate ? Number(rate) : 0.13`, and since this controller
+is the only real entry point to `getCostSummary` in this codebase, its
+`€0.25` service-level default is **dead code in production** — a caller
+who doesn't pass `?rate=` gets €0.13, never €0.25. This is exactly the kind
+of thing that only shows up when tracing input → resolution → fallback →
+**consumer**, not the implementation in isolation.
+
+**Architectural read:** this is 5 independently-authored resolution paths
+plus 1 aggregation-only consumer with its own unrelated fallback (currency,
+not rate) — a **consistency/maintenance debt**, not a demonstrated
+calculation bug. No single number here is provably "wrong" for its own
+narrow purpose; the problem is that five different "I don't know" values
+exist for what should be one concept, so two features can legitimately
+disagree about the same vehicle's cost without either one having a defect.
+None of this is presented to the user as inconsistent today because each
+number only ever shows up in its own context — but a user comparing
+"cost per km" (via the controller, €0.13 when uninformed) against a
+specific trip's `costTotal` (€0.25, different code path, different
 settings-field priority) against their actual charging history
-(`ChargingCostService`, defaults to €0.32/€0.45) could see numbers that
-don't reconcile, without any single formula being "wrong."
+(`ChargingCostService`, €0.32/€0.45) could see numbers that don't
+reconcile, without any single formula being "wrong."
 
 ## Charging cost (per session)
 
@@ -80,7 +108,14 @@ Code: [`trip-detector.service.ts:1354-1363`](../../apps/api/src/trips/trip-detec
 
 ## Energy cost (30-day rollup) and cost per km
 
-`VehicleAnalyticsService.getCostSummary(vehicleId, pricePerKwh=0.25)`:
+`VehicleAnalyticsService.getCostSummary(vehicleId, pricePerKwh=0.25)` — but
+called exclusively from `GET /analytics/vehicle/:id/cost-summary`
+([`vehicle-analytics.controller.ts:74-79`](../../apps/api/src/analytics/vehicle-analytics.controller.ts#L74-L79)),
+whose handler resolves `pricePerKwh` itself before calling the service:
+`rate ? Number(rate) : 0.13`. The service's own `=0.25` default is
+therefore **never reached through the real API** — the actual effective
+default a user sees is **€0.13**, a sixth number for the same concept that
+only the service's own default-parameter reading would suggest is €0.25.
 
 ```
 window = last 30 days
@@ -133,6 +168,36 @@ implemented once, just not shared with the other four cost paths.
 
 Code: [`cost-forecast.service.ts:28-111`](../../apps/api/src/analytics/cost-forecast.service.ts#L28-L111)
 
+## Manual cost override — bypasses tariff resolution entirely
+
+`ChargingSession.manualCost`, settable via `PUT /charging/sessions/:id/cost`
+([`charging.controller.ts:87-94`](../../apps/api/src/charging/charging.controller.ts#L87-L94)).
+Not documented anywhere before this pass. This is a **user-entered value**
+that sits outside all five resolution paths above — it isn't a sixth
+tariff-resolution tier (it doesn't compute a rate from anything), it's an
+escape hatch that says "ignore the resolver, I know the real number."
+`calculateSessionCost` already checks for this: `if (session.costSource ===
+'manual' || ...) return` — a manually-costed session is never overwritten
+by recalculation. Any future `TariffResolverService` needs to preserve this
+as an explicit bypass, not fold it into the resolution ladder as another
+fallback tier — it answers a different question ("what did the user say
+they paid") than the resolver's ("what rate should apply here").
+
+## Currency — a second, independent fallback (not a rate one)
+
+`ChargingCostService.getMonthlyCostSummary`
+([`charging-cost.service.ts:303-340`](../../apps/api/src/charging/charging-cost.service.ts#L303-L340))
+aggregates already-persisted `costTotal` values (no tariff resolution of
+its own) but resolves **currency** independently: `sessions.find(s =>
+s.currency)?.currency ?? 'EUR'` — the first session in the window that has
+a non-null `currency`, else hardcoded `'EUR'`. Every session's own
+`currency` field is itself always written as the literal string `'EUR'` by
+`ChargingCostService` (see [`charging.md`](charging.md#cost)), so in
+practice this fallback is currently unreachable — but it's a second,
+separately-authored "what currency" decision, distinct from the five "what
+rate" decisions above, and worth keeping distinct in any future contract
+rather than assuming rate and currency always resolve together.
+
 ## TCO (Total Cost of Ownership)
 
 **NOT IMPLEMENTED.** No depreciation, insurance, or maintenance-cost
@@ -165,10 +230,13 @@ already catalogued in [`README.md`](README.md#confidence-model).
 
 ## Edge cases
 
-1. **Five independent tariff calculations, four different hardcoded
-   defaults** — the central finding above. Not a bug in any single file;
-   a consistency gap across files that only becomes visible when read
-   together, which is presumably why it survived this long.
+1. **Five independent tariff-resolution paths, five different hardcoded
+   defaults (€0.13/€0.25/€0.32/€0.35/€0.45)** — the central finding above.
+   Not a bug in any single file; a consistency gap across files that only
+   becomes visible when read together — and only fully visible when traced
+   to the actual consumer, not just the service implementation (the €0.13
+   controller-level shadow was invisible from reading
+   `VehicleAnalyticsService` alone).
 
 2. **`Trip.costTotal` and `ChargingSession.costTotal` are different
    concepts sharing a name** — see "Trip cost" above. Anyone consuming the
@@ -177,6 +245,17 @@ already catalogued in [`README.md`](README.md#confidence-model).
 3. **`getCostSummary`'s cost-per-km is a period ratio, not a per-trip
    figure** — reasonable for "what did the last 30 days cost me," wrong to
    present as "this trip cost X/km" without qualification.
+
+4. **`manualCost` is an undocumented bypass, not a resolution tier** — see
+   "Manual cost override" above. Easy to miss when designing a consolidated
+   resolver, since it looks superficially like "just another fallback."
+
+5. **`TripGapRecoveryService` is missing a fallback tier its sibling has**
+   — `TripDetectorService`'s trip-finalize path checks `homeChargingRate`
+   then `chargingCost` before the hardcoded default; the gap-recovery path
+   only checks `homeChargingRate`. Whether this is deliberate (recovered
+   trips are already a degraded-data path) or simply an oversight when the
+   two were written separately is not determinable from the code alone.
 
 ## Algorithm version
 

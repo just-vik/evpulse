@@ -64,12 +64,15 @@ column); charging energy computes the same choice but only logs it, doesn't
 persist it (documented gap in [`charging.md`](charging.md#energy-source-selection)).
 
 **Tariff resolution specifically does not follow "one ladder, one
-implementation"** — [`costs.md`](costs.md#the-central-finding-five-independent-tariff-calculations-four-different-hardcoded-defaults)
-found five independently-authored tariff-resolution functions across five
-files, with four different hardcoded default rates (€0.25/€0.32/€0.35/€0.45)
-for the same "I don't know your real rate" fallback case. This is the
-clearest concrete argument in the whole audit for a single shared
-`TariffResolverService` before any further cost feature is built.
+implementation"** — [`costs.md`](costs.md#the-central-finding-five-independent-tariff-resolution-paths-five-different-hardcoded-defaults)
+found five independently-authored tariff-resolution paths (plus one
+aggregation-only consumer with its own unrelated currency fallback), with
+**five** different hardcoded default rates (€0.13/€0.25/€0.32/€0.35/€0.45)
+for the same "I don't know your real rate" fallback case — the €0.13 only
+visible by tracing forward to the actual API consumer, not the service
+implementation alone. This is the clearest concrete argument in the whole
+audit for a single shared `TariffResolverService` before any further cost
+feature is built.
 
 ## Confidence model
 
