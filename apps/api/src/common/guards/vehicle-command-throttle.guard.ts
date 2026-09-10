@@ -73,8 +73,17 @@ export class VehicleCommandThrottleGuard implements CanActivate {
     } catch (error) {
       if (error instanceof HttpException) throw error;
       this.logger.error(`Rate limit check failed for vehicle ${vehicleId}: ${error.message}`);
-      // Fail open: allow if Redis is unavailable
-      return true;
+      // Fail closed: if we can't verify the rate limit, don't let the
+      // command through unchecked — an unavailable Redis must not become
+      // an unlimited-command bypass (this guard is what stands between a
+      // client bug/retry storm and Tesla's pay-per-use command billing).
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+          message: 'Cannot verify command rate limit right now — try again shortly',
+        },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
     }
   }
 }
