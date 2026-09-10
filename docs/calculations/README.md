@@ -15,7 +15,7 @@ section for why that order matters.
 | [`trips.md`](trips.md) | Trip detection state machine, start/end, distance, gaps | Done |
 | [`charging.md`](charging.md) | Charging session detection, energy source ladder, cost, efficiency | Done |
 | [`battery-health.md`](battery-health.md) | SOH / degradation estimate | Done |
-| `range.md` | Range prediction | Pending |
+| [`range.md`](range.md) | Range prediction | Done |
 | `costs.md` | TCO / cost-per-km rollups | Pending — no implementation exists yet, will document as such |
 | `data-quality.md` | Cross-cutting confidence/quality patterns, once enough specs exist to generalize from | Pending |
 
@@ -79,6 +79,16 @@ documents the actual fragmentation, not an aspirational unification:
 - **Charging**: no numeric confidence at all — only a `costSource` /
   `chargerType` string indicating which pricing tier was used. See
   [`charging.md`](charging.md#data-quality-rules--confidence).
+- **Range**: a fourth, independently-authored 0–1 formula scaled by trip
+  count alone (`min(0.95, 0.5 + tripsUsed/40 × 0.45)`), with its own
+  high/medium/low thresholds (`>=0.80`/`>=0.60`) that don't match any other
+  metric's boundaries. See [`range.md`](range.md#confidence).
+
+Four metrics, four different confidence formulas and scales, none sharing
+boundaries or meaning with another. This is the concrete case for
+[`data-quality.md`](README.md) once all specs exist — not to force a single
+number, but to at least document why they differ and whether any should
+converge.
 
 Before building a unified `data-quality.md` cross-cutting model, the
 individual specs need to exist first — generalizing now would mean guessing
