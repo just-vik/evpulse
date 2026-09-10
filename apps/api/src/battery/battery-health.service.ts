@@ -76,7 +76,11 @@ export class BatteryHealthService {
       where: {
         vehicleId,
         energyAddedKwh: { not: null },
-        startSoc: { not: null },
+        // startSoc is a required (non-nullable) column — filtering it with
+        // `{ not: null }` is always true but Prisma 5.x rejects the
+        // predicate outright at runtime for a non-nullable field, throwing
+        // "Argument `not` must not be null" on every call. endSoc IS
+        // nullable, so its `{ not: null }` filter stays.
         endSoc: { not: null },
         endTime: { not: null },
       },
@@ -109,7 +113,8 @@ export class BatteryHealthService {
       where: {
         vehicleId,
         energyAddedKwh: { not: null },
-        startSoc: { not: null },
+        // See the identical comment in estimateCapacityFromCharging() above —
+        // startSoc is non-nullable, so `{ not: null }` on it throws at runtime.
         endSoc: { not: null },
         endTime: { not: null },
         ...(since ? { startTime: { gte: since } } : {}),
