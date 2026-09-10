@@ -306,7 +306,7 @@ describe('CURRENT BEHAVIOR: VehicleAnalyticsService.getCostSummary', () => {
   });
 });
 
-describe('CURRENT BEHAVIOR: CostForecastService.resolveRate / forecastForVehicle', () => {
+describe('CostForecastService.resolveRate / forecastForVehicle (migrated to TariffResolverService)', () => {
   function makeService(fixtures: { sessions: any[]; settings?: any; dailyEnergyRows?: any[] }) {
     const prisma: any = {
       chargingSession: {
@@ -324,11 +324,18 @@ describe('CURRENT BEHAVIOR: CostForecastService.resolveRate / forecastForVehicle
         groupBy: jest.fn(async () => []),
       },
     };
-    const service = new CostForecastService(prisma);
+    // No chargerType/location is ever passed to resolve() from this consumer,
+    // so superchargerPricing/teslaOAuth are irrelevant here (omitted, same as
+    // the other @Optional() catalog deps in the other describe blocks above).
+    const tariffResolver = new TariffResolverService(prisma, undefined, undefined, {
+      canonicalDefaultRate: 0.35,
+      canonicalCurrency: 'EUR',
+    });
+    const service = new CostForecastService(prisma, tariffResolver);
     return { service, prisma };
   }
 
-  it('uses the weighted average of >=3 real-cost sessions when available (source: sessions)', async () => {
+  it('UNCHANGED: uses the weighted average of >=3 real-cost sessions when available (legacy source label: sessions)', async () => {
     const { service } = makeService({
       sessions: [
         { vehicleId: VEHICLE_ID, costTotal: 3.5, energyAddedKwh: 10 },
@@ -339,11 +346,15 @@ describe('CURRENT BEHAVIOR: CostForecastService.resolveRate / forecastForVehicle
 
     const result = await service.resolveRate(VEHICLE_ID);
 
+    // Resolver's internal source is 'historical_sessions', mapped back to
+    // the pre-existing 'sessions' label by toLegacyRateSource() in
+    // cost-forecast.service.ts -- proven byte-identical against real
+    // production data before this migration (see commit history).
     expect(result.source).toBe('sessions');
     expect(result.rate).toBeCloseTo(0.35, 5); // (3.5+7+10.5)/(10+20+30)
   });
 
-  it('falls back to settings.homeChargingRate when fewer than 3 priced sessions exist (source: settings)', async () => {
+  it('UNCHANGED: falls back to settings.homeChargingRate when fewer than 3 priced sessions exist (legacy source label: settings)', async () => {
     const { service } = makeService({
       sessions: [{ vehicleId: VEHICLE_ID, costTotal: 3.5, energyAddedKwh: 10 }],
       settings: { homeChargingRate: 0.35, chargingCost: 0 },
@@ -355,16 +366,41 @@ describe('CURRENT BEHAVIOR: CostForecastService.resolveRate / forecastForVehicle
     expect(result.rate).toBe(0.35);
   });
 
-  it('falls back to the hardcoded €0.25 only when settings itself is entirely absent (source: default)', async () => {
+  it('KNOWN, ACCEPTED DIVERGENCE: settings.chargingCost is no longer a fallback when homeChargingRate is unset', async () => {
+    // Pre-migration: settings?.homeChargingRate ?? settings?.chargingCost --
+    // chargingCost was a secondary fallback within the "settings" tier.
+    // TariffResolverService's vehicle_settings.home tier reads only
+    // homeChargingRate (tariff-resolver.md's chargingCost exclusion, already
+    // applied identically in ChargingCostService/VehicleAnalyticsService).
+    // A settings row with homeChargingRate unset (0, i.e. "not configured")
+    // now falls straight through to the default tier instead of picking up
+    // chargingCost.
+    const { service } = makeService({
+      sessions: [],
+      settings: { homeChargingRate: 0, chargingCost: 0.4 },
+    });
+
+    const result = await service.resolveRate(VEHICLE_ID);
+
+    expect(result.source).toBe('default'); // NOT 'settings' / 0.4
+    expect(result.rate).toBe(0.35);
+  });
+
+  it('KNOWN, ACCEPTED DIVERGENCE: default tier now returns the shared canonicalDefaultRate instead of the old hardcoded €0.25', async () => {
+    // Pre-migration literal was this service's own DEFAULT_RATE = 0.25.
+    // Post-migration it's TariffResolverService's canonicalDefaultRate
+    // (0.35 in production, per AnalyticsModule/ChargingModule's shared
+    // provisional config) -- same already-accepted default-literal change
+    // as the other two migrated consumers.
     const { service } = makeService({ sessions: [], settings: null });
 
     const result = await service.resolveRate(VEHICLE_ID);
 
     expect(result.source).toBe('default');
-    expect(result.rate).toBe(0.25);
+    expect(result.rate).toBe(0.35); // NOT the old hardcoded 0.25
   });
 
-  it('forecastForVehicle multiplies avgEnergyPerDay by the resolved rate for week/month projections', async () => {
+  it('UNCHANGED: forecastForVehicle multiplies avgEnergyPerDay by the resolved rate for week/month projections', async () => {
     const { service } = makeService({
       sessions: [],
       settings: { homeChargingRate: 0.35, chargingCost: 0 },
@@ -378,5 +414,24 @@ describe('CURRENT BEHAVIOR: CostForecastService.resolveRate / forecastForVehicle
     expect(result.effectiveRate).toBe(0.35);
     expect(result.weeklyCost).toBeCloseTo(3 * 7 * 0.35, 5);
     expect(result.monthlyCost).toBeCloseTo(3 * 30 * 0.35, 5);
+  });
+
+  it('UNCHANGED: forecastForVehicle bypasses resolveRate entirely when rateOverride is supplied (legacy source label: override)', async () => {
+    // rateOverride is a caller-side bypass mechanism distinct from both
+    // manualCost and the resolver -- forecastForVehicle() short-circuits
+    // before ever calling resolveRate()/tariffResolver.resolve(), so it
+    // needs no resolver mapping and is unaffected by this migration.
+    const { service, prisma } = makeService({
+      sessions: [],
+      settings: null,
+      dailyEnergyRows: Array.from({ length: 10 }, () => ({ energyUsedKwh: 9 })),
+    });
+
+    const result = await service.forecastForVehicle(VEHICLE_ID, 0.5);
+
+    expect(result.rateSource).toBe('override');
+    expect(result.effectiveRate).toBe(0.5);
+    expect(prisma.chargingSession.findMany).not.toHaveBeenCalled();
+    expect(prisma.vehicleSettings.findUnique).not.toHaveBeenCalled();
   });
 });
