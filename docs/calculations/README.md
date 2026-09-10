@@ -64,15 +64,20 @@ column); charging energy computes the same choice but only logs it, doesn't
 persist it (documented gap in [`charging.md`](charging.md#energy-source-selection)).
 
 **Tariff resolution specifically does not follow "one ladder, one
-implementation"** — [`costs.md`](costs.md#the-central-finding-five-independent-tariff-resolution-paths-five-different-hardcoded-defaults)
-found five independently-authored tariff-resolution paths (plus one
-aggregation-only consumer with its own unrelated currency fallback), with
-**five** different hardcoded default rates (€0.13/€0.25/€0.32/€0.35/€0.45)
-for the same "I don't know your real rate" fallback case — the €0.13 only
-visible by tracing forward to the actual API consumer, not the service
-implementation alone. This is the clearest concrete argument in the whole
-audit for a single shared `TariffResolverService` before any further cost
-feature is built.
+implementation"** — [`costs.md`](costs.md#the-central-finding-corrected-one-real-settings-source-mostly-dead-fallback-code-and-one-genuinely-distinct-default)
+found five independently-authored tariff-resolution code paths, but tracing
+where their inputs actually come from (`VehicleSettings`, guaranteed
+non-null per vehicle) showed most of their own hardcoded fallback constants
+are dead code, not live divergent behavior. What *is* live: a genuine
+disagreement between two declared "default" values for `thirdPartyRate`
+(€0.55 at vehicle creation vs €0.45 elsewhere), and a controller-level
+€0.13 default (`vehicle-analytics.controller.ts`) that's independent of
+`VehicleSettings` entirely and only visible by tracing forward to the
+actual API consumer. This is still the clearest concrete argument in the
+whole audit for a single shared `TariffResolverService` — just for a more
+specific reason than "five random numbers": one real settings-layer
+inconsistency plus one orphaned endpoint-level default, buried under a pile
+of consolidation-worthy but currently-harmless dead code.
 
 ## Confidence model
 

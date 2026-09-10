@@ -1,8 +1,16 @@
 # Charging: sessions, energy, cost, efficiency
 
-Status: **as-built** — verified against `apps/api/src/charging/` on `main` @
-`3aba43e`. See [`README.md`](README.md) for shared units/confidence/
-versioning conventions.
+Status: **as-built** — verified against `apps/api/src/charging/` and
+`apps/api/src/vehicles/` (tariff seeding) on `main` @ `8016c90`. See
+[`README.md`](README.md) for shared units/confidence/versioning
+conventions.
+
+**Revision note:** the original pass (@ `3aba43e`) documented the
+per-session cost ladder's own fallback constants but not where
+`VehicleSettings` values actually come from. Tracing that back found the
+real seed values and a genuine disagreement between three declared
+defaults for `thirdPartyRate` — see "VehicleSettings is the primary
+configured-tariff source" below.
 
 ## Definition
 
@@ -175,7 +183,7 @@ Ladder, evaluated once per session at `calculateSessionCost`:
 ```
 1. session.costSource in {'manual', 'tesla_api'} → skip entirely (authoritative, never overwritten)
 2. Tesla Supercharger site match via GPS + catalog API (real market rate)   → costSource = 'supercharger_<provider>'
-3. No site match, but explicit Tesla Supercharger charger type             → costSource = 'supercharger' (configured time-of-day rate)
+3. No site match, but explicit Tesla Supercharger charger type             → costSource = 'supercharger' (settings.superchargerRate, time-of-day)
 4. High-power (>50kW) DC, non-Tesla-branded, or GPS/catalog unavailable    → costSource = 'tariff', rate = settings.thirdPartyRate ?? 0.45
 5. Public AC (city/fast) or 3rd-party DC <50kW                             → costSource = 'tariff', rate = settings.thirdPartyRate ?? 0.45
 6. Home/wall/AC-home (default bucket)                                      → costSource = 'tariff', rate = settings.homeChargingRate ?? 0.32
@@ -189,12 +197,61 @@ DC / third-party) the product wants, and `costSource` **is** persisted per
 session — this is more mature provenance-tracking than the energy ladder
 above.
 
+### `VehicleSettings` is the primary configured-tariff source — the `?? 0.32`/`?? 0.45` fallbacks above are practically unreachable
+
+`homeChargingRate`, `thirdPartyRate`, and `chargingCost` are **non-nullable**
+columns on `VehicleSettings` (Prisma schema, `Float @default(...)`, not
+`Float?`), and `VehiclesService`'s vehicle-creation path explicitly
+guarantees every vehicle gets a settings row — its own comment: "Always
+ensure VehicleSettings exist... Without this record: cost calculation uses
+hardcoded fallbacks." In normal operation `settings` is essentially never
+`null`, so `settings?.homeChargingRate ?? 0.32` almost never actually
+evaluates its right-hand side — the live value comes from the row, not the
+code's own fallback constant. Treat these `?? 0.32`/`?? 0.45` literals as
+defensive dead code for the "settings row is entirely missing" case, not as
+"what a new user's rate defaults to."
+
+Actual seed values, as written by `VehiclesService` on vehicle creation
+([`vehicles.service.ts:227-237`](../../apps/api/src/vehicles/vehicles.service.ts#L227-L237)):
+
+```
+homeChargingRate   = €0.35
+superchargerRate   = €0.49
+thirdPartyRate     = €0.55
+```
+
+**Confirmed inconsistent defaults for `thirdPartyRate`; runtime
+race/reachability not yet established.** Two other places define a
+"default" `thirdPartyRate` that disagrees with the €0.55 actually written
+at creation time:
+- `VehicleSettingsService`'s own `DEFAULTS` constant (used when reading
+  settings back / filling gaps,
+  [`vehicle-settings.service.ts:15-21`](../../apps/api/src/vehicles/vehicle-settings.service.ts#L15-L21)):
+  `thirdPartyRate: €0.45`
+- The Prisma schema's own column default: `€0.45`
+
+`homeChargingRate` (€0.35) and `superchargerRate` (€0.49) agree across all
+of these; only `thirdPartyRate` diverges. This means it's at least
+theoretically possible for a code path that reads settings before
+`VehiclesService`'s creation logic has run (or via a different read path
+that falls back to `VehicleSettingsService.DEFAULTS`) to present €0.45 as
+"your third-party rate" while the row eventually persisted is €0.55. **This
+document does not claim that race is actually reachable** — confirming
+that requires tracing every `VehicleSettings` read path and their calling
+order, which hasn't been done. What's confirmed here is only that the
+three declared "default" values themselves disagree.
+
+Supercharger time-of-day pricing has an analogous, separately-declared
+fallback: `superchargerRateForTime()`
+([`charging-cost.service.ts:276-277`](../../apps/api/src/charging/charging-cost.service.ts#L276-L277))
+falls back to `settings?.superchargerRate ?? 0.42` — a *fourth* number
+(€0.42) for the same concept, again practically unreachable given
+`superchargerRate`'s non-null schema default, but a fourth independently-
+chosen literal nonetheless.
+
 **Known, not-yet-fixed issues** (per your instruction: documented here, not
 changed in this pass):
-- `€0.32` / `€0.45` fallback rates are hardcoded constants, used whenever
-  `settings.homeChargingRate` / `settings.thirdPartyRate` is unconfigured —
-  there's no user-visible signal distinguishing "your actual configured
-  rate" from "we guessed."
+- The `thirdPartyRate` €0.55 vs €0.45 disagreement above.
 - `currency: 'EUR'` is a literal string — no multi-currency support at all,
   not even a schema field that's simply unused.
 
@@ -229,6 +286,12 @@ on record.
    plausible but not backed by a cited reference; a legitimately unusual
    but real session (e.g. a very cold DC fast-charge with high losses) could
    fall outside it and silently lose its efficiency figure.
+
+4. **Three independently-declared "default" `thirdPartyRate` values that
+   disagree** (€0.55 at creation vs €0.45 in `VehicleSettingsService`'s
+   `DEFAULTS` and the Prisma schema) — see "VehicleSettings is the primary
+   configured-tariff source" above. Confirmed as a disagreement between
+   declared defaults; not yet confirmed as a reachable runtime race.
 
 4. **Hardcoded currency and default rates** — see "Cost" above.
 
