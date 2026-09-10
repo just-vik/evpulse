@@ -4,6 +4,7 @@ import { TelemetryService } from '../telemetry/telemetry.service';
 import { RedisService } from '../redis/redis.service';
 import { BatteryAnalyticsService } from '../battery/battery-analytics.service';
 import { VampireDrainService } from '../telemetry/vampire-drain.service';
+import { TariffResolverService } from '../charging/tariff-resolver.service';
 
 /**
  * Data quality levels derived from telemetry freshness.
@@ -45,6 +46,7 @@ export class VehicleAnalyticsService {
     private readonly redis: RedisService,
     @Optional() private readonly batteryAnalytics: BatteryAnalyticsService,
     @Optional() private readonly vampireDrain: VampireDrainService,
+    private readonly tariffResolver: TariffResolverService,
   ) {}
 
   private async cacheGet(key: string): Promise<string | null> {
@@ -350,6 +352,14 @@ export class VehicleAnalyticsService {
   /**
    * Cost analytics for last 30 days.
    * Wraps existing energy/charging stats with a simple cost model.
+   *
+   * `pricePerKwh` no longer feeds the rate calculation as of the
+   * TariffResolverService migration (docs/calculations/tariff-resolver.md) --
+   * every session missing a persisted cost now resolves through the
+   * canonical home/third_party/supercharger tariff tiers instead of this
+   * caller-supplied value. The parameter is kept only for the cache-key
+   * and as an informational echo in the result, for API-shape stability;
+   * it is not read anywhere else in this method.
    */
   async getCostSummary(vehicleId: string, pricePerKwh = 0.25) {
     const cacheKey = `cost:summary:${vehicleId}:${pricePerKwh}`;
@@ -361,11 +371,7 @@ export class VehicleAnalyticsService {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const [settings, sessions, distanceAgg] = await Promise.all([
-      this.prisma.vehicleSettings.findUnique({
-        where: { vehicleId },
-        select: { chargingCost: true, homeChargingRate: true },
-      }),
+    const [sessions, distanceAgg] = await Promise.all([
       this.prisma.chargingSession.findMany({
         where: {
           vehicleId,
@@ -377,6 +383,7 @@ export class VehicleAnalyticsService {
           cost:           true,
           costTotal:      true,   // actual persisted cost (from tariff or tesla_api)
           chargerType:    true,
+          startTime:      true,   // needed by TariffResolverService's Supercharger ToD tier
         },
       }),
       this.prisma.trip.aggregate({
@@ -388,11 +395,6 @@ export class VehicleAnalyticsService {
       }),
     ]);
 
-    const homeRate =
-      (settings?.homeChargingRate ?? 0) > 0 ? settings!.homeChargingRate! :
-      (settings?.chargingCost    ?? 0) > 0 ? settings!.chargingCost!    :
-      pricePerKwh;
-
     let energyKwh = 0;
     let totalCost = 0;
 
@@ -400,19 +402,23 @@ export class VehicleAnalyticsService {
       const e = s.energyAddedKwh ?? 0;
       energyKwh += e;
 
-      // Priority: costTotal (from tariff/tesla_api) > cost (legacy) > fallback formula
+      // Priority: costTotal (from tariff/tesla_api) > cost (legacy) > TariffResolverService
       const sessionCost = (s as any).costTotal ?? s.cost ?? null;
       if (sessionCost != null && sessionCost > 0) {
         totalCost += sessionCost;
       } else {
-        const type = (s.chargerType ?? '').toLowerCase();
-        const isHomeOrAc =
-          type.includes('wall') ||
-          type.includes('home') ||
-          type.includes('ac') ||
-          type.includes('slow');
-        const effectiveRate = isHomeOrAc ? homeRate : pricePerKwh;
-        totalCost += e * effectiveRate;
+        // historical_summary: this is a rollup gap-fill, not a live price or
+        // a forecast -- the resolver never uses historical_sessions here
+        // (tariff-resolver.md §3). Canonical chargerType classification
+        // (home/third_party/supercharger) replaces the old ad hoc
+        // substring match, which misclassified ac_city/ac_fast as home.
+        const resolution = await this.tariffResolver.resolve({
+          purpose: 'historical_summary',
+          vehicleId,
+          chargerType: s.chargerType ?? undefined,
+          timestamp: s.startTime,
+        });
+        totalCost += e * resolution.rate;
       }
     }
 

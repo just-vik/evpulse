@@ -185,6 +185,22 @@ describe('CURRENT BEHAVIOR: ChargingCostService.calculateSessionCost', () => {
 });
 
 describe('CURRENT BEHAVIOR: VehicleAnalyticsService.getCostSummary', () => {
+  // UPDATE (VehicleAnalyticsService migration): getCostSummary's fallback
+  // for sessions with no persisted cost now delegates to a real
+  // TariffResolverService instead of its own substring-based
+  // classification. Three tests below intentionally assert NEW values,
+  // each documented as an approved, real (shadow-comparison-verified)
+  // behavior change -- not silent drift:
+  //   - ac_city/ac_fast: were misclassified as home (old `includes('ac')`
+  //     substring bug), now correctly resolve as third_party.
+  //   - non-home sessions: used the caller's pricePerKwh (prod default
+  //     €0.13), now use settings.thirdPartyRate (real seed €0.55).
+  //   - tesla_sc/supercharger: had NO dedicated branch at all before (fell
+  //     into the generic non-home bucket); now resolves through the
+  //     canonical Supercharger tariff tier. This is the one real session
+  //     the live shadow comparison against production data actually found.
+  // The plain 'ac_home' case is genuinely unchanged (both old and new
+  // classify it as home) and is kept as a true regression assertion.
   function makeService(fixtures: { settings?: any; sessions: any[]; distanceKm: number }) {
     const prisma: any = {
       vehicleSettings: {
@@ -199,9 +215,13 @@ describe('CURRENT BEHAVIOR: VehicleAnalyticsService.getCostSummary', () => {
         aggregate: jest.fn(async () => ({ _sum: { distanceKm: fixtures.distanceKm } })),
       },
     };
+    const tariffResolver = new TariffResolverService(prisma, undefined, undefined, {
+      canonicalDefaultRate: 0.35,
+      canonicalCurrency: 'EUR',
+    });
     // getCostSummary caches via cacheGet/cacheSet — stub both as no-ops so
     // repeated calls in the same test don't need a real cache backend.
-    const service = new VehicleAnalyticsService(prisma, {} as any);
+    const service = new VehicleAnalyticsService(prisma, {} as any, {} as any, undefined as any, undefined as any, tariffResolver);
     jest.spyOn(service as any, 'cacheGet').mockResolvedValue(null);
     jest.spyOn(service as any, 'cacheSet').mockResolvedValue(undefined);
     return { service, prisma };
@@ -222,9 +242,9 @@ describe('CURRENT BEHAVIOR: VehicleAnalyticsService.getCostSummary', () => {
     expect(result.costPerKm).toBeCloseTo(0.99, 5);
   });
 
-  it('re-derives via home/AC keyword match when costTotal is missing, using settings.homeChargingRate', async () => {
+  it('UNCHANGED: home charger types still use homeChargingRate when costTotal is missing', async () => {
     const { service } = makeService({
-      settings: { chargingCost: 0, homeChargingRate: 0.35 },
+      settings: REAL_SEED_SETTINGS,
       sessions: [
         { vehicleId: VEHICLE_ID, energyAddedKwh: 10, costTotal: null, cost: null, chargerType: 'ac_home', startTime: new Date(), endTime: new Date() },
       ],
@@ -236,9 +256,9 @@ describe('CURRENT BEHAVIOR: VehicleAnalyticsService.getCostSummary', () => {
     expect(result.totalCost).toBe(3.5); // 10 * 0.35 (home), not the 0.13 pricePerKwh param
   });
 
-  it('re-derives via the caller-supplied pricePerKwh for non-home/AC charger types', async () => {
+  it('APPROVED CHANGE: non-home charger types now use settings.thirdPartyRate, not the caller pricePerKwh', async () => {
     const { service } = makeService({
-      settings: { chargingCost: 0, homeChargingRate: 0.35 },
+      settings: REAL_SEED_SETTINGS, // thirdPartyRate: 0.55
       sessions: [
         { vehicleId: VEHICLE_ID, energyAddedKwh: 10, costTotal: null, cost: null, chargerType: 'dc_third', startTime: new Date(), endTime: new Date() },
       ],
@@ -247,11 +267,42 @@ describe('CURRENT BEHAVIOR: VehicleAnalyticsService.getCostSummary', () => {
 
     const result = await service.getCostSummary(VEHICLE_ID, 0.13);
 
-    // This pins the controller-shadowed default from costs.md: whatever
-    // the caller passes as pricePerKwh (in production, the controller's
-    // own 0.13 default, never the service signature's 0.25) is what's
-    // actually used for a non-home session with no persisted cost.
-    expect(result.totalCost).toBe(1.3); // 10 * 0.13
+    // Before: 10 * 0.13 = 1.3 (caller pricePerKwh). After: 10 * 0.55 = 5.5.
+    expect(result.totalCost).toBe(5.5);
+  });
+
+  it('APPROVED CHANGE: ac_city/ac_fast are reclassified from home to third_party (fixes the old includes(\'ac\') substring bug)', async () => {
+    const { service } = makeService({
+      settings: REAL_SEED_SETTINGS,
+      sessions: [
+        { vehicleId: VEHICLE_ID, energyAddedKwh: 10, costTotal: null, cost: null, chargerType: 'ac_city', startTime: new Date(), endTime: new Date() },
+      ],
+      distanceKm: 100,
+    });
+
+    const result = await service.getCostSummary(VEHICLE_ID, 0.13);
+
+    // Before: 'ac_city'.includes('ac') -> misclassified home -> 10*0.35=3.5
+    // After: correctly third_party -> 10*0.55=5.5
+    expect(result.totalCost).toBe(5.5);
+  });
+
+  it('APPROVED CHANGE: tesla_sc/supercharger sessions now resolve the Supercharger tariff instead of falling into the generic non-home bucket', async () => {
+    // This is the exact real-world case the live shadow comparison against
+    // production data found: a tesla_sc session with no persisted cost.
+    const { service } = makeService({
+      settings: REAL_SEED_SETTINGS, // superchargerRate: 0.49
+      sessions: [
+        { vehicleId: VEHICLE_ID, energyAddedKwh: 10, costTotal: null, cost: null, chargerType: 'tesla_sc', startTime: new Date(), endTime: new Date() },
+      ],
+      distanceKm: 100,
+    });
+
+    const result = await service.getCostSummary(VEHICLE_ID, 0.13);
+
+    // Before: no supercharger-aware branch existed -> treated as non-home -> 10*0.13=1.3
+    // After: vehicle_settings.supercharger tier -> 10*0.49=4.9
+    expect(result.totalCost).toBe(4.9);
   });
 });
 
