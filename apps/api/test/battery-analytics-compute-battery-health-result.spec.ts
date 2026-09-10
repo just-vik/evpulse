@@ -150,6 +150,9 @@ function makeService(fixtures: Fixtures) {
     // Baseline-lock writes — not under test here (see file header); always
     // a no-op so tests never depend on a real UPDATE having "happened."
     $executeRaw: jest.fn(async () => 0),
+    batteryHealth: {
+      create: jest.fn(async ({ data }: any) => ({ id: 'dry-run', timestamp: new Date(), ...data })),
+    },
   };
 
   const redis: any = { get: async () => null, set: async () => 'OK' };
@@ -318,6 +321,61 @@ describe('BatteryAnalyticsService.computeBatteryHealthResult', () => {
       const result = await service.computeBatteryHealthResult(VEHICLE_ID);
 
       expect((result as any).nominalCapacityKwh).toBe(70);
+    });
+  });
+
+  describe('updateBatteryMetrics — thin adapter/writer only', () => {
+    it('persists exactly what computeBatteryHealthResult returns, without recomputing anything', async () => {
+      const fixtures = baseFixtures();
+      const { service, prisma } = makeService(fixtures);
+
+      const canned = {
+        value: 91.23, rawValue: 95.5, source: 'weighted_median' as const,
+        observationCount: 7, methodCount: 2, confidence: 0.67,
+        algorithmVersion: BATTERY_HEALTH_ALGORITHM_VERSION,
+        estimatedCapacityKwh: 68.4, nominalCapacityKwh: 75, degradationPercent: 8.77,
+        tripSoh: 90, chargingSoh: 95, ratedRangeSoh: null,
+        avgBatteryTempC: -3.2, cycles: 42.1,
+        wltpRangeKm: 450, wltpIsFromSpec: true, methodNames: 'charging+trip',
+      };
+      // Proves updateBatteryMetrics does not run its own version of the
+      // estimator/blend logic — it can only produce this exact row if it
+      // took every value from computeBatteryHealthResult's return, not from
+      // independently querying charging sessions/trips/range itself.
+      jest.spyOn(service, 'computeBatteryHealthResult').mockResolvedValue(canned as any);
+
+      await service.updateBatteryMetrics(VEHICLE_ID);
+
+      expect(prisma.chargingSession.findMany).not.toHaveBeenCalled();
+      expect(prisma.trip.findMany).not.toHaveBeenCalled();
+      expect(prisma.batteryHealth.create).toHaveBeenCalledTimes(1);
+
+      const written = (prisma.batteryHealth.create as jest.Mock).mock.calls[0][0].data;
+      expect(written).toMatchObject({
+        vehicleId: VEHICLE_ID,
+        sohPercent: canned.value,
+        estimatedCapacityKwh: canned.estimatedCapacityKwh,
+        nominalCapacityKwh: canned.nominalCapacityKwh,
+        degradationPercent: canned.degradationPercent,
+        method: canned.source,
+        confidenceScore: canned.confidence,
+        sampleCount: canned.methodCount,
+        tripSoh: canned.tripSoh,
+        chargingSoh: canned.chargingSoh,
+        ratedRangeSoh: canned.ratedRangeSoh,
+        avgBatteryTempC: canned.avgBatteryTempC,
+        cycles: canned.cycles,
+      });
+    });
+
+    it('writes nothing when computeBatteryHealthResult returns null (insufficient data / below-floor)', async () => {
+      const fixtures = baseFixtures();
+      const { service, prisma } = makeService(fixtures);
+      jest.spyOn(service, 'computeBatteryHealthResult').mockResolvedValue(null);
+
+      await service.updateBatteryMetrics(VEHICLE_ID);
+
+      expect(prisma.batteryHealth.create).not.toHaveBeenCalled();
     });
   });
 });
