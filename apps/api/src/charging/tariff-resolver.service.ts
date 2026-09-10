@@ -157,7 +157,8 @@ export class TariffResolverService {
   }
 
   /**
-   * MIRRORS charging-cost.service.ts's superchargerRateForTime() exactly —
+   * PORTED FROM charging-cost.service.ts's superchargerRateForTime() (removed
+   * after the tariff-resolution cleanup pass, all 5 consumers migrated) —
    * same peak/off-peak window, same timezone fallback, same semantics —
    * plus the 0-as-unconfigured guard applied to the standard rate (that
    * guard did not exist in the original; it's the canonicalized behavior

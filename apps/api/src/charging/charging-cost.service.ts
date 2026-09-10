@@ -288,46 +288,6 @@ export class ChargingCostService {
   }
 
   /**
-   * DEAD CODE as of the TariffResolverService migration — no remaining call
-   * sites in this file. Left in place rather than deleted: the agreed
-   * migration order removes old tariff-resolution snippets in the final
-   * cleanup pass (docs/calculations/tariff-resolver.md), only after all
-   * five consumers have moved over, not one at a time.
-   *
-   * Returns the effective Supercharger rate for a given session start time,
-   * applying the user's configured off-peak schedule when available.
-   *
-   * Tesla Germany time-of-day schedule (typical):
-   *   Peak    08:00–22:00 → settings.superchargerRate      (e.g. 0.38 €/kWh)
-   *   Off-peak 22:00–08:00 → settings.superchargerOffPeakRate (e.g. 0.25 €/kWh)
-   *
-   * Falls back to superchargerRate when no off-peak rate is configured.
-   */
-  private superchargerRateForTime(settings: any, startTime: Date): number {
-    const standardRate = settings?.superchargerRate ?? 0.42;
-    const offPeakRate  = settings?.superchargerOffPeakRate as number | null ?? null;
-    if (offPeakRate == null) return standardRate;
-
-    const peakStart = (settings?.superchargerPeakStart as number | null) ?? 8;
-    const peakEnd   = (settings?.superchargerPeakEnd   as number | null) ?? 22;
-
-    // Use vehicle/user timezone (falls back to Europe/Berlin for backwards compat).
-    // Stored in vehicle_settings.timezone (default 'UTC' in schema, but users in
-    // Germany default to Europe/Berlin via settings page).
-    const tz = (settings?.timezone as string | undefined) || 'Europe/Berlin';
-    const localHour = parseInt(
-      new Intl.DateTimeFormat('en', {
-        timeZone: tz,
-        hour:     'numeric',
-        hour12:   false,
-      }).format(startTime),
-      10,
-    );
-    const isPeak = localHour >= peakStart && localHour < peakEnd;
-    return isPeak ? standardRate : offPeakRate;
-  }
-
-  /**
    * Cost summary for a vehicle over N months, grouped by month.
    */
   async getMonthlyCostSummary(vehicleId: string, months = 3) {
