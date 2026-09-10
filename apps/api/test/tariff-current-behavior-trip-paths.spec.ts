@@ -17,11 +17,11 @@
  * must be updated to match or this file silently tests the wrong thing.
  * Do not treat this file as end-to-end coverage of either service.
  *
- * TripDetectorService MIGRATED to TariffResolverService (see the second
- * describe block below and commit history) — its CURRENT-BEHAVIOR block
- * stays put as the pre-migration pinned record, per the never-merge rule
- * above; it is not re-run against the real migrated code. TripGapRecoveryService
- * is not yet migrated and its CURRENT-BEHAVIOR block still reflects live code.
+ * TripDetectorService and TripGapRecoveryService are now BOTH MIGRATED to
+ * TariffResolverService (see the MIGRATED describe blocks below and commit
+ * history) — their CURRENT-BEHAVIOR blocks stay put as the pre-migration
+ * pinned record, per the never-merge rule above; they are not re-run
+ * against the real migrated code.
  */
 
 import { TariffResolverService } from '../src/charging/tariff-resolver.service';
@@ -215,5 +215,75 @@ describe('CURRENT BEHAVIOR (isolated snippet): TripGapRecoveryService cost', () 
     const result = await gapRecoveryCostSnippet(prisma, 'veh-1', null);
     expect(result).toBeNull();
     expect(prisma.vehicleSettings.findUnique).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * MIRROR of trip-gap-recovery.service.ts's migrated "Cost" block, same
+ * methodology as the TripDetectorService MIGRATED block above: real
+ * TariffResolverService, no chargerType/location (none exists in this
+ * code path -- gap-recovered trips have no charger metadata either).
+ */
+async function gapRecoveryCostViaResolver(
+  resolver: TariffResolverService,
+  vehicleId: string,
+  energyUsedKwh: number | null,
+): Promise<number | null> {
+  if (energyUsedKwh == null) return null;
+  const resolution = await resolver.resolve({ purpose: 'actual_cost', vehicleId });
+  return Math.round(energyUsedKwh * resolution.rate * 100) / 100;
+}
+
+describe('MIGRATED (isolated snippet): TripGapRecoveryService cost via TariffResolverService', () => {
+  it('UNCHANGED: uses homeChargingRate when configured (the actual €0.35 seed)', async () => {
+    const resolver = makeResolver({ homeChargingRate: 0.35 });
+    const result = await gapRecoveryCostViaResolver(resolver, 'veh-1', 20);
+    expect(result).toBe(7);
+  });
+
+  it('UNCHANGED (numerically): falls through to canonicalDefaultRate when the settings row is entirely missing', async () => {
+    // Old literal was this snippet's own hardcoded 0.35; new literal is
+    // TariffResolverService's canonicalDefaultRate, which also happens to
+    // be configured as 0.35 today -- a coincidental match, not a
+    // guarantee, same caveat as the old comment about this branch being
+    // dead-code-in-practice (VehiclesService always ensures a settings row).
+    const resolver = makeResolver(null);
+    const result = await gapRecoveryCostViaResolver(resolver, 'veh-1', 10);
+    expect(result).toBe(3.5);
+  });
+
+  it('KNOWN, ACCEPTED DIVERGENCE (synthetic-only): a homeChargingRate of exactly 0 is now treated as unconfigured, converging with TripDetectorService', async () => {
+    // This is the one real semantic change from this migration: the old
+    // gap-recovery snippet used a plain `?? 0.35`, honoring a literal 0
+    // (see the DIVERGES-from-TripDetectorService test above). The resolver
+    // canonicalizes the `(x ?? 0) > 0` guard for all consumers, so 0 now
+    // falls through to the default tier -- converging the two previously-
+    // diverging trip paths onto one behavior.
+    //
+    // Confirmed via a real-data shadow comparison against the only
+    // production VehicleSettings row (vehicle cmmnmqvj80004147xffuos6b3,
+    // homeChargingRate=0.32) before this migration: no real settings row
+    // has ever had homeChargingRate=0, so this is a synthetic-only accepted
+    // behavior difference, not an observed production change -- same
+    // treatment as the other "known, accepted divergence" cases across
+    // this migration series.
+    const resolver = makeResolver({ homeChargingRate: 0 });
+    const result = await gapRecoveryCostViaResolver(resolver, 'veh-1', 10);
+    expect(result).toBe(3.5); // NOT 0 -- proves the >0 guard now applies here too
+  });
+
+  it('CONVERGED with TripDetectorService: returns null without calling the resolver when energyUsedKwh is null', async () => {
+    // Old gap-recovery snippet fetched settings unconditionally even when
+    // energyUsedKwh was null (see the CURRENT-BEHAVIOR test above) --
+    // migration folded this consumer's cost block into the same
+    // `if (energyUsedKwh != null)` short-circuit shape already used by
+    // TripDetectorService, eliminating that one extra no-op query. Harmless
+    // (the old lookup result was never used when energy was null), and
+    // consistent with the sibling consumer rather than a new special case.
+    const resolver = makeResolver({ homeChargingRate: 0.35 });
+    const resolveSpy = jest.spyOn(resolver, 'resolve');
+    const result = await gapRecoveryCostViaResolver(resolver, 'veh-1', null);
+    expect(result).toBeNull();
+    expect(resolveSpy).not.toHaveBeenCalled();
   });
 });

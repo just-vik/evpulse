@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { GeocodingService } from '../geocoding/geocoding.service';
 import { isWorkerRole } from '../runtime/runtime-role';
+import { TariffResolverService } from '../charging/tariff-resolver.service';
 
 /**
  * TripGapRecoveryService
@@ -37,6 +38,7 @@ export class TripGapRecoveryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly geocoding: GeocodingService,
+    private readonly tariffResolver?: TariffResolverService,
   ) {}
 
   // Auto-recovery is now scheduled by SystemMaintenanceCronService (every 15 min).
@@ -182,14 +184,24 @@ export class TripGapRecoveryService {
         ? Math.round((energyUsedKwh * 1000 / odoDistKm) * 10) / 10
         : null;
 
-      // Cost
-      const settings = await this.prisma.vehicleSettings.findUnique({
-        where: { vehicleId: a.vehicleId },
-      });
-      const rateEurKwh = settings?.homeChargingRate ?? 0.35;
-      const costTotal = energyUsedKwh != null
-        ? Math.round(energyUsedKwh * rateEurKwh * 100) / 100
-        : null;
+      // Cost -- delegated to TariffResolverService (purpose: 'actual_cost'), same
+      // treatment as TripDetectorService's trip-finalize cost block: this is the
+      // cost of energy consumed while driving, not a charging session, so no
+      // chargerType/location is passed (none exists here either). Two accepted
+      // divergences from the pre-migration literal logic (see
+      // tariff-current-behavior-trip-paths.spec.ts): a homeChargingRate of
+      // exactly 0 is now treated as unconfigured (falls through to the default
+      // tier) instead of being used as-is, and the fallback-when-unset literal
+      // changes from the old hardcoded 0.35 to the shared canonicalDefaultRate
+      // (also 0.35 today, so currently a no-op numerically).
+      let costTotal: number | null = null;
+      if (energyUsedKwh != null) {
+        if (!this.tariffResolver) {
+          throw new Error(`TripGapRecoveryService: TariffResolverService not available (vehicle ${a.vehicleId})`);
+        }
+        const resolution = await this.tariffResolver.resolve({ purpose: 'actual_cost', vehicleId: a.vehicleId });
+        costTotal = Math.round(energyUsedKwh * resolution.rate * 100) / 100;
+      }
 
       // Create recovered trip
       const trip = await this.prisma.trip.create({
