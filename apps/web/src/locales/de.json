@@ -262,7 +262,22 @@
     "seatDriver": "Fahrer",
     "seatPass": "Beif.",
     "seatRL": "Hi. L",
-    "seatRR": "Hi. R"
+    "seatRR": "Hi. R",
+    "honking": "Hupt…",
+    "confirm": {
+      "send": "Befehl senden",
+      "cancel": "Abbrechen",
+      "staleTitle": "Fahrzeugstatus könnte veraltet sein",
+      "staleBody": "Das Fahrzeug könnte im Ruhemodus sein. Dieser Befehl kann es aufwecken und wirkt möglicherweise nicht sofort.",
+      "wakeTitle": "Fahrzeug wecken?",
+      "wakeBody": "Dies sendet eine Weck-Anfrage. Das kann einige Sekunden dauern.",
+      "unlockTitle": "Fahrzeug entsperren?",
+      "unlockBody": "Stelle sicher, dass sich niemand Unbefugtes in der Nähe des Fahrzeugs befindet. Der Sperrstatus aktualisiert sich, sobald das Fahrzeug bestätigt.",
+      "honkTitle": "Hupe betätigen?",
+      "honkBody": "Das Fahrzeug hupt — achte auf Personen in der Nähe.",
+      "stopChargeTitle": "Ladevorgang stoppen?",
+      "stopChargeBody": "Die aktuelle Ladesitzung wird unterbrochen."
+    }
   },
   "liveFeed": {
     "title": "Live-Status",
@@ -877,11 +892,14 @@
       "access": "Signale"
     },
     "commands": {
-      "success": "Befehl ausgeführt",
+      "success": "Befehl gesendet",
       "asleep": "Fahrzeug nicht verfügbar — zuerst aufwecken",
       "circuitOpen": "Tesla API ist vorübergehend nicht verfügbar, später erneut versuchen",
       "timeout": "Fahrzeug antwortet nicht — bitte erneut versuchen",
-      "failed": "Befehl konnte nicht ausgeführt werden"
+      "failed": "Befehl konnte nicht ausgeführt werden",
+      "rateLimit": "Zu viele Befehle — bitte kurz warten",
+      "unconfirmed": "Befehlsstatus nicht bestätigt",
+      "networkError": "Senden des Befehls konnte nicht bestätigt werden"
     },
     "advanced": {
       "title": "Erweitert",

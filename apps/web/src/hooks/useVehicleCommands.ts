@@ -1,22 +1,11 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient, type VehicleStatusResponse } from '@/lib/api';
+import { apiClient } from '@/lib/api';
 import { useAuthStore } from '@/stores/authStore';
 import { useUIStore } from '@/stores/uiStore';
 import { useTranslation } from 'react-i18next';
-
-// Which status fields each command can optimistically update
-function optimisticPatch(command: string): Partial<VehicleStatusResponse> | null {
-  switch (command) {
-    case 'lock':           return { locked: true };
-    case 'unlock':         return { locked: false };
-    case 'start-charging': return { chargingState: 'Charging' };
-    case 'stop-charging':  return { chargingState: 'Stopped' };
-    case 'wake':           return { vehicleState: 'waking' };
-    default:               return null;
-  }
-}
+import { reconciliationDelayMs, classifyCommandError } from './vehicleCommandPolicy';
 
 export function useVehicleCommands(vehicleId: string) {
   const { accessToken } = useAuthStore();
@@ -24,52 +13,38 @@ export function useVehicleCommands(vehicleId: string) {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
 
+  const invalidateStatus = () => queryClient.invalidateQueries({ queryKey: ['vehicle-status', vehicleId] });
+
   const mutation = useMutation({
+    // P1.6a: commands are side-effecting Tesla actions, not idempotent form
+    // submissions — never auto-retry. The app-wide QueryClient default
+    // (mutations.retry: 1) is intentionally overridden here, not changed
+    // globally. Durable server-side idempotency (P1.6b) is still required
+    // to protect against a user re-sending after a lost/timed-out response;
+    // this only removes the *automatic*, invisible client-side duplicate.
+    retry: 0,
+
     mutationFn: ({ command, params }: { command: string; params?: Record<string, unknown> }) =>
       apiClient.sendVehicleCommand(vehicleId, command, params ?? {}, accessToken!),
 
-    onMutate: async ({ command }) => {
-      const key = ['vehicle-status', vehicleId];
-      // Pause background refetches so they don't overwrite our optimistic state
-      await queryClient.cancelQueries({ queryKey: key });
-      const previous = queryClient.getQueryData<VehicleStatusResponse>(key);
+    // No onMutate / optimistic cache patch: vehicle state must only ever
+    // change from a confirmed REST/WS read. A command being *accepted* by
+    // this endpoint is not the same as Tesla having executed it.
 
-      const patch = optimisticPatch(command);
-      if (patch) {
-        queryClient.setQueryData<VehicleStatusResponse>(key, (old) =>
-          old ? { ...old, ...patch } : old,
-        );
-      }
-      return { previous, command };
-    },
-
-    onError: (err: any, { command }, context) => {
-      // Revert optimistic update
-      if (context?.previous) {
-        queryClient.setQueryData(['vehicle-status', vehicleId], context.previous);
-      }
-      const status = Number(err?.status ?? 0);
-      const msg = String(err?.message ?? '').trim();
-      if (status === 429) {
-        addToast('error', `${t('common.error')} 429: ${command}`);
-      } else {
-        addToast('error', msg || t('vehicleDetail.commands.failed'));
-      }
+    onError: (err: any, { command }) => {
+      const { messageKey, refresh } = classifyCommandError(err);
+      addToast('error', t(messageKey));
+      if (refresh === 'delayed') setTimeout(invalidateStatus, reconciliationDelayMs(command));
+      else if (refresh === 'immediate') invalidateStatus();
+      // refresh === 'none': nothing reached the vehicle — no read needed.
     },
 
     onSuccess: (_, { command }) => {
+      // Truthful: the request was accepted, not that the vehicle state has
+      // actually changed yet — that only happens once the delayed refresh
+      // below (or a live WS event) confirms it.
       addToast('success', t('vehicleDetail.commands.success'));
-      // Delayed refresh to let Tesla API propagate state change
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['vehicle-status', vehicleId] });
-      }, command === 'wake' ? 8_000 : 3_000);
-    },
-
-    onSettled: () => {
-      // Always revalidate after command completes, regardless of outcome
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['vehicle-status', vehicleId] });
-      }, 500);
+      setTimeout(invalidateStatus, reconciliationDelayMs(command));
     },
   });
 

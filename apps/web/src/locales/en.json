@@ -262,7 +262,22 @@
     "seatDriver": "Driver",
     "seatPass": "Pass",
     "seatRL": "Rear L",
-    "seatRR": "Rear R"
+    "seatRR": "Rear R",
+    "honking": "Honking…",
+    "confirm": {
+      "send": "Send command",
+      "cancel": "Cancel",
+      "staleTitle": "Vehicle status may be outdated",
+      "staleBody": "The vehicle may be asleep. This command may wake it and might not take effect right away.",
+      "wakeTitle": "Wake the vehicle?",
+      "wakeBody": "This sends a wake request. It can take a few seconds.",
+      "unlockTitle": "Unlock the vehicle?",
+      "unlockBody": "Make sure no one unauthorized is near the vehicle. Lock status updates once the vehicle confirms.",
+      "honkTitle": "Honk the horn?",
+      "honkBody": "The vehicle will sound its horn — be aware of people nearby.",
+      "stopChargeTitle": "Stop charging?",
+      "stopChargeBody": "The current charging session will be interrupted."
+    }
   },
   "liveFeed": {
     "title": "Live status",
@@ -918,11 +933,14 @@
       "scheduledDeparture": "Scheduled departure"
     },
     "commands": {
-      "success": "Command executed",
+      "success": "Command sent",
       "asleep": "Vehicle unavailable — wake it first",
       "circuitOpen": "Tesla API is temporarily unavailable, try later",
       "timeout": "Vehicle did not respond — try again",
-      "failed": "Failed to execute command"
+      "failed": "Failed to execute command",
+      "rateLimit": "Too many commands — please wait a moment",
+      "unconfirmed": "Command status not confirmed",
+      "networkError": "Could not confirm the command was sent"
     },
     "presets": {
       "title": "My Presets",

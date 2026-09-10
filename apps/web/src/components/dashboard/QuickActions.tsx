@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ZapOff, Lock, Unlock, Volume2, RefreshCw } from 'lucide-react';
 import { PowerOnIcon, ChargingIcon, ClimateIcon, TripIcon, BoltIcon, LeafIcon } from '@/components/icons/NavIcons';
@@ -8,7 +8,36 @@ import { useTranslation } from 'react-i18next';
 import { useVehicleStatus } from '@/hooks/useVehicleStatus';
 import { useVehicleCommands } from '@/hooks/useVehicleCommands';
 import { useTripsToday, useChargingSummary } from '@/hooks/useVehicleAggregates';
-import { BaseCard } from '@/shared/ui';
+import { BaseCard, ConfirmDialog } from '@/shared/ui';
+import { COMMAND_CONFIRM_POLICY, needsConfirmation } from '@/hooks/vehicleCommandPolicy';
+
+// i18n keys for the confirm-dialog copy, per action id. Actions on the
+// 'stale' policy share the generic "status may be outdated" copy instead of
+// a command-specific one.
+const CONFIRM_COPY: Record<string, { titleKey: string; bodyKey: string; confirmLabelKey: string }> = {
+  wake:          { titleKey: 'quickActions.confirm.wakeTitle', bodyKey: 'quickActions.confirm.wakeBody', confirmLabelKey: 'quickActions.wake' },
+  unlock:        { titleKey: 'quickActions.confirm.unlockTitle', bodyKey: 'quickActions.confirm.unlockBody', confirmLabelKey: 'quickActions.unlock' },
+  honk:          { titleKey: 'quickActions.confirm.honkTitle', bodyKey: 'quickActions.confirm.honkBody', confirmLabelKey: 'quickActions.honk' },
+  'stop-charge': { titleKey: 'quickActions.confirm.stopChargeTitle', bodyKey: 'quickActions.confirm.stopChargeBody', confirmLabelKey: 'quickActions.stopCharge' },
+};
+const STALE_CONFIRM_COPY = {
+  titleKey: 'quickActions.confirm.staleTitle',
+  bodyKey: 'quickActions.confirm.staleBody',
+  confirmLabelKey: 'quickActions.confirm.send',
+};
+
+// Pending-state label per action id, shown in place of the static label
+// while the command is in flight — not just a spinning icon, so the state
+// change is announced to assistive tech too, not only conveyed visually.
+const PENDING_LABEL_KEY: Record<string, string> = {
+  wake: 'quickActions.waking',
+  'start-charge': 'quickActions.startingCharge',
+  'stop-charge': 'quickActions.stoppingCharge',
+  climate: 'quickActions.startingClimate',
+  lock: 'quickActions.locking',
+  unlock: 'quickActions.unlocking',
+  honk: 'quickActions.honking',
+};
 
 interface Props {
   vehicleId: string;
@@ -104,12 +133,26 @@ export function QuickActions({ vehicleId }: Props) {
   const { status, isLoading } = useVehicleStatus(vehicleId);
   const { send, isBusy, busyCommand } = useVehicleCommands(vehicleId);
   const { t } = useTranslation();
+  const [confirmAction, setConfirmAction] = useState<ActionDef | null>(null);
 
   const { tripsToday } = useTripsToday(vehicleId);
   const { chargingSummary } = useChargingSummary(vehicleId);
 
   const dataQuality = (status as any)?.dataQuality as string | undefined;
-  const controlsDisabled = !!dataQuality && dataQuality !== 'REALTIME' && dataQuality !== 'DELAYED';
+  const isStaleOrOffline = !!dataQuality && dataQuality !== 'REALTIME' && dataQuality !== 'DELAYED';
+  const controlsDisabled = isStaleOrOffline;
+
+  function requestAction(action: ActionDef) {
+    if (needsConfirmation(action.id, isStaleOrOffline)) {
+      setConfirmAction(action);
+    } else {
+      send(action.command, action.params);
+    }
+  }
+
+  function confirmDialogCopy(action: ActionDef) {
+    return COMMAND_CONFIRM_POLICY[action.id] === 'stale' ? STALE_CONFIRM_COPY : (CONFIRM_COPY[action.id] ?? STALE_CONFIRM_COPY);
+  }
 
   const actionState: ActionState = {
     vehicleState:  status?.vehicleState ?? null,
@@ -191,8 +234,9 @@ export function QuickActions({ vehicleId }: Props) {
         <motion.button
           initial={{ opacity: 0, scale: 0.97 }}
           animate={{ opacity: 1, scale: 1 }}
-          onClick={() => send('wake')}
+          onClick={() => requestAction(ACTIONS.find((a) => a.id === 'wake')!)}
           disabled={isBusy}
+          aria-busy={isBusy && busyCommand === 'wake'}
           className={`
             w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border
             text-sm transition-all disabled:opacity-60 disabled:cursor-default
@@ -203,22 +247,24 @@ export function QuickActions({ vehicleId }: Props) {
           {isBusy && busyCommand === 'wake'
             ? <RefreshCw className="w-4 h-4 animate-spin" />
             : <PowerOnIcon size={15} />}
-          {t('quickActions.wake')}
+          {isBusy && busyCommand === 'wake' ? t(PENDING_LABEL_KEY.wake) : t('quickActions.wake')}
         </motion.button>
       ) : (
         /* Normal: flex row, wraps naturally */
         <div className="flex flex-wrap gap-2">
           {visible.map((action, i) => {
             const Icon = action.icon;
-            const isThisBusy = isBusy && busyCommand === action.id;
+            const isThisBusy = isBusy && busyCommand === action.command;
+            const pendingKey = PENDING_LABEL_KEY[action.id];
             return (
               <motion.button
                 key={action.id}
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: i * 0.04 }}
-                onClick={() => send(action.command, action.params)}
+                onClick={() => requestAction(action)}
                 disabled={isBusy}
+                aria-busy={isThisBusy}
                 className={`
                   inline-flex items-center gap-2 px-3 py-2 rounded-xl border
                   text-xs transition-all disabled:opacity-60 disabled:cursor-default
@@ -227,11 +273,26 @@ export function QuickActions({ vehicleId }: Props) {
                 `}
               >
                 {isThisBusy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Icon size={14} />}
-                {t(action.labelKey)}
+                {isThisBusy && pendingKey ? t(pendingKey) : t(action.labelKey)}
               </motion.button>
             );
           })}
         </div>
+      )}
+
+      {confirmAction && (
+        <ConfirmDialog
+          open={!!confirmAction}
+          onOpenChange={(open) => { if (!open) setConfirmAction(null); }}
+          title={t(confirmDialogCopy(confirmAction).titleKey)}
+          description={t(confirmDialogCopy(confirmAction).bodyKey)}
+          confirmLabel={t(confirmDialogCopy(confirmAction).confirmLabelKey)}
+          cancelLabel={t('quickActions.confirm.cancel')}
+          onConfirm={() => {
+            send(confirmAction.command, confirmAction.params);
+            setConfirmAction(null);
+          }}
+        />
       )}
 
       {/* Today's summary — divider + 4 stat chips */}

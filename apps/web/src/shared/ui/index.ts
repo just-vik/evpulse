@@ -7,3 +7,4 @@ export { SkeletonCard } from './SkeletonCard';
 export { SkeletonTable } from './SkeletonTable';
 export { SkeletonChart } from './SkeletonChart';
 export { PeriodDeltaBadge } from './PeriodDeltaBadge';
+export { ConfirmDialog } from './ConfirmDialog';
