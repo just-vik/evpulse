@@ -14,7 +14,7 @@ section for why that order matters.
 | [`energy.md`](energy.md) | Trip energy, consumption (Wh/km) | Done |
 | [`trips.md`](trips.md) | Trip detection state machine, start/end, distance, gaps | Done |
 | [`charging.md`](charging.md) | Charging session detection, energy source ladder, cost, efficiency | Done |
-| [`battery-health.md`](battery-health.md) | SOH / degradation estimate | Done |
+| [`battery-health.md`](battery-health.md) | SOH / degradation estimate — two competing engines found; `BatteryAnalyticsService` now designated canonical, `BatteryHealthService` legacy | Done |
 | [`range.md`](range.md) | Range prediction | Done |
 | [`costs.md`](costs.md) | Charging/trip/energy cost, cost-per-km, forecast (implemented); TCO, fleet economics (not implemented) | Done |
 | `data-quality.md` | Cross-cutting confidence/quality patterns, once enough specs exist to generalize from | Pending |
@@ -80,10 +80,12 @@ documents the actual fragmentation, not an aspirational unification:
   (gates state-machine transitions only, does not gate the energy integral
   itself) and a per-trip 0–100 quality score with HIGH/MEDIUM/LOW labels.
   Neither is exposed in any UI today. See [`energy.md`](energy.md#confidence).
-- **Battery health**: a 0–1 `confidenceScore`, persisted per estimate,
-  scaled by sample count and estimation method (`0.30–0.70` for the
-  fallback method, `0.50–0.95` for the quality method). See
-  [`battery-health.md`](battery-health.md#confidence).
+- **Battery health**: turned out to have *three* independently-authored
+  confidence representations on its own once both engines were fully
+  audited — session-count-scaled 0.30–0.95 (legacy engine), method-count
+  ratio 0.33/0.67/1.00 (canonical engine's SOH blend), and a categorical
+  HIGH/MEDIUM/NONE (canonical engine's separate baseline-lock mechanism).
+  See [`battery-health.md`](battery-health.md#confidence-models-catalogued-so-far-battery-health-alone-has-three).
 - **Charging**: no numeric confidence at all — only a `costSource` /
   `chargerType` string indicating which pricing tier was used. See
   [`charging.md`](charging.md#data-quality-rules--confidence).
@@ -97,11 +99,14 @@ documents the actual fragmentation, not an aspirational unification:
   which say *where a number came from*, not *how much to trust it*. See
   [`costs.md`](costs.md#data-quality-rules--confidence).
 
-Four confidence formulas plus one confidence-shaped-but-isn't provenance
-label, none sharing boundaries or meaning with another. This is the
-concrete case for [`data-quality.md`](README.md) once all specs exist — not
-to force a single number, but to at least document why they differ and
-whether any should converge.
+At least **six** independently-authored confidence representations
+counted so far (trips/energy's two-tier score, battery health's three —
+see [`battery-health.md`](battery-health.md#confidence-models-catalogued-so-far-battery-health-alone-has-three) —
+range's, and costs' provenance-label-not-confidence), none sharing
+boundaries or meaning with another. This is the concrete case for
+[`data-quality.md`](README.md) once all specs exist — not to force a single
+number, but to at least document why they differ and whether any should
+converge.
 
 Before building a unified `data-quality.md` cross-cutting model, the
 individual specs need to exist first — generalizing now would mean guessing
