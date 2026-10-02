@@ -20,21 +20,27 @@ export class AIAgentService {
   /**
    * Check if an insight command has been recently rejected by this user.
    * If rejected in the last 7 days, auto-execution is disabled for safety.
+   *
+   * Deliberately does not catch its own DB errors (P1.5a, Oct 2026): this used
+   * to return `false` ("not rejected") on any query failure, which meant a DB
+   * hiccup silently meant "allow execution" instead of "we don't know, so
+   * don't risk it". Letting it throw and handling that at the one call site
+   * (process()'s insight loop) keeps the fail-closed decision next to the
+   * other skip-reason bookkeeping, and — unlike AIExecutorService.execute(),
+   * which must never throw because a thrown error would abort the loop for
+   * every remaining insight — this method has exactly one caller, so there's
+   * no such blast-radius concern in propagating the error there.
    */
   private async isRecentlyRejected(vehicleId: string, title: string): Promise<boolean> {
-    try {
-      const rows = await this.prisma.$queryRaw<Array<{ cnt: bigint }>>`
-        SELECT COUNT(*) AS cnt
-        FROM "ai_insight_logs"
-        WHERE "vehicleId" = ${vehicleId}
-          AND "title" = ${title}
-          AND "accepted" = false
-          AND "createdAt" > NOW() - INTERVAL '7 days'
-      `;
-      return Number(rows[0]?.cnt ?? 0) > 0;
-    } catch {
-      return false; // If check fails, allow execution
-    }
+    const rows = await this.prisma.$queryRaw<Array<{ cnt: bigint }>>`
+      SELECT COUNT(*) AS cnt
+      FROM "ai_insight_logs"
+      WHERE "vehicleId" = ${vehicleId}
+        AND "title" = ${title}
+        AND "accepted" = false
+        AND "createdAt" > NOW() - INTERVAL '7 days'
+    `;
+    return Number(rows[0]?.cnt ?? 0) > 0;
   }
 
   /**
@@ -72,8 +78,20 @@ export class AIAgentService {
         continue;
       }
 
-      // Feedback check — respect user's past rejections
-      const rejected = await this.isRecentlyRejected(context.vehicleId, insight.title);
+      // Feedback check — respect user's past rejections.
+      // Fail-closed: if we can't determine rejection history, skip rather than
+      // execute — "cannot establish that execution is safe" must mean "don't",
+      // not "assume not rejected" (P1.5a, Oct 2026).
+      let rejected: boolean;
+      try {
+        rejected = await this.isRecentlyRejected(context.vehicleId, insight.title);
+      } catch (err: any) {
+        this.logger.warn(
+          `[Agent] Rejection-history check failed for "${command}" (insight "${insight.title}") — skipping for safety: ${err?.message}`,
+        );
+        skipped.push({ command, reason: 'safety check unavailable: rejection history' });
+        continue;
+      }
       if (rejected) {
         this.logger.debug(
           `[Agent] Skipping auto-execute of "${command}" — insight "${insight.title}" was recently rejected`,

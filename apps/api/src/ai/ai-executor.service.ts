@@ -103,6 +103,16 @@ export class AIExecutorService {
    *   7. Vehicle-scoped token — resolved from vehicle's Tesla account link
    *   8. Execute with retry + exponential backoff
    *   9. Log to ai_action_logs with userId, source, duration, retryCount
+   *
+   * Steps 2/4/5/6 are fail-closed (P1.5a, Oct 2026): if Redis can't be reached
+   * to evaluate one of these checks, the command is blocked — `{ executed:
+   * false, reason: 'safety check unavailable: <check>' }` — never silently
+   * treated as "check passed". Mirrors VehicleCommandThrottleGuard's existing
+   * fail-closed contract for the human REST path. This method never throws
+   * for an unavailable safety check — it returns the same typed result as
+   * every other block reason, so callers (chatAndExecute, AIAgentService's
+   * insight loop) don't need special-case error handling and one blocked
+   * insight can't abort processing of the others.
    */
   async execute(
     vehicleId: string,
@@ -128,14 +138,20 @@ export class AIExecutorService {
     }
 
     // ── 2. Circuit breaker check ──────────────────────────────────────────────
+    // Fail-closed (Oct 2026, P1.5a): a Redis error here used to be treated as
+    // "not blocked" and execution continued. Safety checks that can't be
+    // evaluated must block, same as VehicleCommandThrottleGuard already does
+    // for the human REST path — an unavailable Redis must not become a
+    // bypass for AI-initiated vehicle commands specifically.
     try {
       const blocked = await this.redis.get(`ai:block:${vehicleId}`);
       if (blocked) {
         this.logger.warn(`[AI] Circuit breaker open for vehicle ${vehicleId} — skipping ${command}`);
         return { executed: false, reason: 'circuit breaker open' };
       }
-    } catch {
-      this.logger.warn('Circuit breaker check skipped (Redis error)');
+    } catch (err: any) {
+      this.logger.error(`[AI] Circuit breaker check failed (Redis error) — blocking ${command} on ${vehicleId}: ${err?.message}`);
+      return { executed: false, reason: 'safety check unavailable: circuit breaker' };
     }
 
     // ── 3. In-memory dedup ────────────────────────────────────────────────────
@@ -159,8 +175,9 @@ export class AIExecutorService {
           this.logger.debug(`Domain cooldown active: ${domain} on vehicle ${vehicleId}`);
           return { executed: false, reason: `${domain} cooldown active` };
         }
-      } catch {
-        this.logger.warn('Domain cooldown check skipped (Redis error)');
+      } catch (err: any) {
+        this.logger.error(`[AI] Domain cooldown check failed (Redis error) — blocking ${command} on ${vehicleId}: ${err?.message}`);
+        return { executed: false, reason: 'safety check unavailable: domain cooldown' };
       }
     }
 
@@ -172,8 +189,9 @@ export class AIExecutorService {
         this.logger.debug(`State lock active: ${domain} on vehicle ${vehicleId}`);
         return { executed: false, reason: `${domain} in progress` };
       }
-    } catch {
-      this.logger.warn('State lock check skipped (Redis error)');
+    } catch (err: any) {
+      this.logger.error(`[AI] State lock check failed (Redis error) — blocking ${command} on ${vehicleId}: ${err?.message}`);
+      return { executed: false, reason: 'safety check unavailable: state lock' };
     }
 
     // ── 6. Hourly rate limit ──────────────────────────────────────────────────
@@ -185,8 +203,9 @@ export class AIExecutorService {
         return { executed: false, reason: `hourly limit (${current}/${HOURLY_LIMIT})` };
       }
       await this.redis.set(rateLimitKey, String(current + 1), 'EX', 3600);
-    } catch {
-      this.logger.warn('Redis rate limit check skipped');
+    } catch (err: any) {
+      this.logger.error(`[AI] Hourly rate limit check failed (Redis error) — blocking ${command} on ${vehicleId}: ${err?.message}`);
+      return { executed: false, reason: 'safety check unavailable: hourly rate limit' };
     }
 
     // ── 7. Vehicle-scoped token ───────────────────────────────────────────────
