@@ -297,9 +297,16 @@ export default function DashboardScreen() {
           >
             <View style={styles.heroTop}>
               <Text style={styles.heroLabel}>{t('home.battery')}</Text>
-              {isCharging && power != null && power > 0 && (
+              {/* isCharging comes from chargingState/vehicleState, never from power's
+                  sign or value — power only supplies the magnitude to display. Before
+                  the Oct 2026 power-polarity fix, a `power > 0` gate here could hide
+                  this badge during a real charging session (when power came from the
+                  PackVoltage×PackCurrent fallback, which used to be negative while
+                  charging). Math.abs() is defense in depth, not load-bearing: the
+                  canonical contract already guarantees charging power is positive. */}
+              {isCharging && power != null && (
                 <View style={styles.powerBadge}>
-                  <Text style={styles.powerBadgeText}>⚡ {power.toFixed(1)} kW</Text>
+                  <Text style={styles.powerBadgeText}>⚡ {Math.abs(power).toFixed(1)} kW</Text>
                 </View>
               )}
             </View>
@@ -343,7 +350,7 @@ export default function DashboardScreen() {
             {isCharging && power != null && (
               <MetricCard
                 label={t('home.chargingPower')}
-                value={power > 0 ? `${power.toFixed(1)} kW` : t('home.idle')}
+                value={`${Math.abs(power).toFixed(1)} kW`}
                 valueColor={color.brand.teal400}
                 wide
               />

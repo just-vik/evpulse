@@ -79,8 +79,10 @@ export class ChargingDetectorService {
   ): Promise<void> {
     const now             = data.timestamp ? new Date(data.timestamp) : new Date();
     const rawPower        = data.power ?? 0;
-    const powerKw         = Math.abs(rawPower); // power is negative when charging in some APIs
-    const isNegativePower = rawPower < -1;
+    // power's canonical sign (Oct 2026 fix, normalizeTeslaTelemetry.ts): positive
+    // for both driving-discharge AND charging; negative only for driving-regen.
+    // So magnitude alone — not sign — is the generic "is power flowing" signal here.
+    const powerKw         = Math.abs(rawPower);
     const currentA        = data.current ?? 0;
     const state           = data.charging_state ?? '';
 
@@ -122,8 +124,7 @@ export class ChargingDetectorService {
     const isTerminal     = terminalStates.includes(state);
     const meetsThreshold =
       powerKw > this.MIN_CHARGE_POWER_KW ||
-      currentA > 3 ||
-      isNegativePower;
+      currentA > 3;
     // Energy delta check (4.3): prefer Tesla's cumulative energy signal over power reading.
     // This filters preconditioning noise — only true charging increases charge_energy_added.
     const energyDelta = data.charge_energy_added != null && prev.chargeEnergyAdded != null
@@ -138,13 +139,25 @@ export class ChargingDetectorService {
     const medSpeed = medianOfArr(newSpeedHist);
 
     // Fleet telemetry may send power without ChargeState in the same batch.
-    // Infer charging from unambiguously high DC power + stopped vehicle.
-    // IMPORTANT: require isNegativePower (rawPower < -1) — Tesla reports power as
-    // negative when charging (energy flowing INTO battery).  Battery preconditioning
-    // (heating pack before a Supercharger stop) draws 20-30 kW FROM the battery
-    // (positive rawPower) and must NOT be mistaken for charging.
+    // Infer charging from unambiguously high charging current + stopped vehicle —
+    // power itself is fallback evidence (magnitude only), never the source of truth
+    // for "is this charging".
+    //
+    // NOTE (Oct 2026 power-polarity fix): this used to require `rawPower < -1`,
+    // back when the normalizer's PackVoltage×PackCurrent fallback produced a
+    // NEGATIVE value while charging. It no longer does (see
+    // normalizeTeslaTelemetry.ts) — charging power is now positive everywhere,
+    // matching DCChargingPower/ACChargingPower's native polarity. That removes
+    // the one case sign alone could ever safely distinguish here: battery
+    // preconditioning (heating the pack before a Supercharger stop) ALSO draws
+    // 20-30 kW from the battery while parked and is ALSO positive now — sign
+    // can no longer tell it apart from real fallback-sourced charging power.
+    // `currentA > 3` (actual charger current) is the replacement: preconditioning
+    // isn't plugged in, so it never has charging current, while real charging
+    // does even in a batch sparse enough to be missing ChargeState and both
+    // charging-power fields.
     const inferredCharging = !isTerminal &&
-      isNegativePower &&           // power must flow INTO battery (negative = charging)
+      currentA > 3 &&                  // real charging current — preconditioning has none
       powerKw > 20 && medSpeed < 2 &&  // use median — null speed defaults to 0
       state !== 'Disconnected' && state !== 'NoPower' && state !== 'Stopped';
 
@@ -154,7 +167,7 @@ export class ChargingDetectorService {
     const vehicleStopped = medSpeed < 5;
     const activeChargingState =
       state === 'Charging' ||
-      (state === 'Complete' && (energyGrowing || meetsThreshold || isNegativePower));
+      (state === 'Complete' && (energyGrowing || meetsThreshold));
     const isActiveState = vehicleStopped && (activeChargingState || inferredCharging) && (energyGrowing || meetsThreshold);
 
     // ── PENDING CHARGING: ChargingState='Charging' arrived before power confirmed ──

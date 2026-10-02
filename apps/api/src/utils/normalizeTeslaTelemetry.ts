@@ -97,7 +97,21 @@ export function normalizeTeslaPayload(raw: any): {
       timestamp: new Date(timestampMs).toISOString(),
       speed: speedKmh,
       // Derive driving power from pack data when explicit Power field is absent.
-      // Tesla convention: PackCurrent is negative when discharging (driving).
+      //
+      // Canonical TripPoint.power contract (Oct 2026 power-polarity fix — do not
+      // change without updating consumers: charging-detector.service.ts,
+      // mobile (tabs)/index.tsx, web VehicleStatusCard.tsx):
+      //   driving:  + = discharge, − = regen
+      //   charging: + = charging power (same polarity as DCChargingPower /
+      //             ACChargingPower below, in every case — including the
+      //             PackVoltage×PackCurrent fallback)
+      //
+      // Before this fix, the fallback branch negated unconditionally, so a
+      // charging sample that fell through to it (DCChargingPower/ACChargingPower
+      // both absent from that batch) came out NEGATIVE — opposite of every other
+      // charging source (DCChargingPower, ACChargingPower, and REST's
+      // charger_power, all positive). Same canonical value, different sign
+      // depending on which Tesla field happened to be present in a given batch.
       power: (() => {
         const explicitPower = num(fields['Power']);
         if (explicitPower != null) return explicitPower;
@@ -108,11 +122,17 @@ export function normalizeTeslaPayload(raw: any): {
         if (acPower != null && acPower > 0) return acPower;
         // Fallback: derive from pack voltage × current.
         // Tesla convention: PackCurrent is NEGATIVE when discharging (driving),
-        // POSITIVE when charging/regen. Negate the product to get the standard
-        // convention (positive = driving/discharging, negative = regen/charging).
+        // POSITIVE when charging OR regenerating while driving (i.e. sign alone
+        // can't tell charging and driving-regen apart — only `isCharging`, from
+        // ChargingState, can). Negate only in the driving case, so this fallback
+        // produces the same canonical sign as DCChargingPower/ACChargingPower
+        // above when charging, instead of contradicting them.
         const v = num(fields['PackVoltage']);
         const i = num(fields['PackCurrent']);
-        if (v != null && i != null) return Math.round((-v * i) / 100) / 10; // kW, 1 dp, signed
+        if (v != null && i != null) {
+          const wattsSigned = isCharging ? (v * i) : (-v * i);
+          return Math.round(wattsSigned / 100) / 10; // kW, 1 dp, canonical sign
+        }
         return 0;
       })(),
       // Prefer UsableBatteryLevel (= what the driver sees in the car/app).
