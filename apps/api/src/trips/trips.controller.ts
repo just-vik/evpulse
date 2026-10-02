@@ -332,10 +332,10 @@ export class TripsController {
   /**
    * Timestamped GPS points for a trip (used by Trip Replay feature).
    * GET /trips/:tripId/points
-   * Returns up to 500 points with lat, lng, timestamp, speed, power, soc.
+   * Returns up to 500 points with lat, lng, timestamp, speed, power, soc, elevation.
    */
   @Get(':tripId/points')
-  @ApiOperation({ summary: 'Get GPS telemetry points for Trip Replay' })
+  @ApiOperation({ summary: 'Get GPS + elevation telemetry points for Trip Replay' })
   async getTripPoints(
     @Param('tripId') tripId: string,
     @Request() req,
@@ -357,12 +357,13 @@ export class TripsController {
       orderBy: { timestamp: 'asc' },
       take: 500,
       select: {
-        timestamp: true,
-        latitude:  true,
-        longitude: true,
-        speed:     true,
-        power:     true,
-        soc:       true,
+        timestamp:  true,
+        latitude:   true,
+        longitude:  true,
+        speed:      true,
+        power:      true,
+        soc:        true,
+        elevationM: true,
       },
     });
 
@@ -371,12 +372,13 @@ export class TripsController {
       startTime: trip.startTime,
       endTime:   trip.endTime,
       points: points.map(p => ({
-        t:   p.timestamp.toISOString(),
-        lat: p.latitude,
-        lng: p.longitude,
-        spd: p.speed   ?? null,
-        pwr: p.power   ?? null,
-        soc: p.soc     ?? null,
+        t:    p.timestamp.toISOString(),
+        lat:  p.latitude,
+        lng:  p.longitude,
+        spd:  p.speed      ?? null,
+        pwr:  p.power      ?? null,
+        soc:  p.soc        ?? null,
+        elev: p.elevationM ?? null,
       })),
     };
   }
