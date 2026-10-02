@@ -127,7 +127,18 @@
         "warning": "Einige Messwerte dieser Fahrt wirkten auffällig — Angaben können ungenau sein.",
         "repaired": "Einige Daten dieser Fahrt wurden automatisch aus einer Signallücke repariert.",
         "degraded": "Die Datenqualität dieser Fahrt ist eingeschränkt — Angaben können ungenau sein."
-      }
+      },
+      "speed": "Geschwindigkeit",
+      "elevation": "Höhe",
+      "elevationGain": "Anstieg",
+      "power": "Leistung",
+      "avg": "Ø",
+      "max": "Max",
+      "noSpeedData": "Keine Geschwindigkeitsdaten",
+      "noElevationData": "Keine Höhendaten",
+      "noPowerData": "Keine Leistungsdaten",
+      "noSocData": "Keine Batteriedaten",
+      "errorTelemetry": "Telemetrie konnte nicht geladen werden"
     }
   },
   "charge": {

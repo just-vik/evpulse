@@ -14,6 +14,15 @@ import { LoadingSkeleton } from '@/components/ui/LoadingSkeleton';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { formatDateLabel } from '@/i18n/format';
 import { decodePolylineToCoords } from '@/lib/decodePolyline';
+import {
+  type TripPointsResponse,
+  speedChartData,
+  powerChartData,
+  elevationChartData,
+  socChartData,
+} from '@/lib/tripTelemetry';
+import { TripStat } from '@/components/trips/TripStat';
+import { TripTelemetryChart } from '@/components/trips/TripTelemetryChart';
 
 /** GET /trips/:tripId/quality — real endpoint (apps/api/src/trips/trips.controller.ts). */
 interface TripQuality {
@@ -38,28 +47,6 @@ interface TripStats {
   elevationGain: number | null;
   drivingStyle: string | null;
   trafficStopRatio: number | null;
-}
-
-/**
- * GET /trips/:tripId/points (apps/api/src/trips/trips.controller.ts) — `elev` added in
- * commit 9b500fd. Fetched here as telemetry data wiring only; not yet used to render
- * anything (no chart, no map-route replacement) — that's the next commit.
- */
-interface TripPoint {
-  t: string;
-  lat: number | null;
-  lng: number | null;
-  spd: number | null;
-  pwr: number | null;
-  soc: number | null;
-  elev: number | null;
-}
-
-interface TripPointsResponse {
-  tripId: string;
-  startTime: string;
-  endTime: string | null;
-  points: TripPoint[];
 }
 
 const SEVERITY_TONE: Record<TripQuality['severity'], StatusTone> = {
@@ -146,10 +133,11 @@ export default function TripDetailScreen() {
   // endpoints have unrelated failure modes, and quality must keep rendering even
   // when points are temporarily unavailable (or vice versa).
   //
-  // Data wiring only for now — points aren't used to render anything yet (no chart,
-  // no map-route replacement). That's the next commit, once point quality/density
-  // has been checked. decodePolylineToCoords(params.polyline) below is still the
-  // map's only coordinate source.
+  // The map still renders from decodePolylineToCoords(params.polyline) above, NOT
+  // from these points — a server-side map-matched route and raw per-sample telemetry
+  // are different things, and swapping the map's coordinate source is a separate
+  // decision for later (once point density/quality across real trips has been
+  // checked), not a side effect of wiring up the telemetry charts below.
   const pointsQuery = useQuery({
     queryKey: ['trip-points', params.id],
     queryFn: async () => {
@@ -159,6 +147,14 @@ export default function TripDetailScreen() {
     enabled: !!params.id,
   });
   const points = pointsQuery.data?.points ?? [];
+
+  // Pure transforms (filter valid + downsample for the chart) — see
+  // src/lib/tripTelemetry.ts. None of this recomputes or reinterprets a value; it's
+  // strictly "which of the canonical /points samples get a dot on this chart."
+  const speedData = useMemo(() => speedChartData(points), [points]);
+  const powerData = useMemo(() => powerChartData(points), [points]);
+  const elevationData = useMemo(() => elevationChartData(points), [points]);
+  const socData = useMemo(() => socChartData(points), [points]);
 
   const duration = (() => {
     const mins = params.durationMin
@@ -242,6 +238,81 @@ export default function TripDetailScreen() {
           </>
         ) : null}
       </Card>
+
+      {pointsQuery.isPending ? (
+        <Card>
+          <LoadingSkeleton variant="chart" height={120} />
+        </Card>
+      ) : pointsQuery.isError ? (
+        <Card>
+          <ErrorState
+            compact
+            message={t('drive.tripDetail.errorTelemetry')}
+            onRetry={() => pointsQuery.refetch()}
+          />
+        </Card>
+      ) : (
+        <>
+          <Card>
+            <Text style={styles.sectionTitle}>{t('drive.tripDetail.speed')}</Text>
+            <View style={styles.statRow}>
+              <TripStat
+                label={t('drive.tripDetail.avg')}
+                value={stats.avgSpeed != null ? Math.round(stats.avgSpeed).toString() : '—'}
+                unit="km/h"
+              />
+              <TripStat
+                label={t('drive.tripDetail.max')}
+                value={stats.maxSpeed != null ? Math.round(stats.maxSpeed).toString() : '—'}
+                unit="km/h"
+              />
+            </View>
+            <TripTelemetryChart
+              data={speedData}
+              unit="km/h"
+              lineColor={color.brand.teal400}
+              emptyLabel={t('drive.tripDetail.noSpeedData')}
+            />
+          </Card>
+
+          <Card>
+            <Text style={styles.sectionTitle}>{t('drive.tripDetail.elevation')}</Text>
+            <TripStat
+              label={t('drive.tripDetail.elevationGain')}
+              value={stats.elevationGain != null ? Math.round(stats.elevationGain).toString() : '—'}
+              unit="m"
+            />
+            <TripTelemetryChart
+              data={elevationData}
+              unit="m"
+              lineColor={color.semantic.info}
+              emptyLabel={t('drive.tripDetail.noElevationData')}
+            />
+          </Card>
+
+          <Card>
+            <TripTelemetryChart
+              title={t('drive.tripDetail.power')}
+              data={powerData}
+              unit="kW"
+              lineColor={color.brand.teal300}
+              emptyLabel={t('drive.tripDetail.noPowerData')}
+            />
+          </Card>
+
+          <Card>
+            <TripTelemetryChart
+              title={t('home.battery')}
+              data={socData}
+              unit="%"
+              lineColor={color.semantic.success}
+              emptyLabel={t('drive.tripDetail.noSocData')}
+              maxValue={100}
+              yAxisOffset={0}
+            />
+          </Card>
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -257,4 +328,7 @@ const styles = StyleSheet.create({
   statLine: { ...tType.body, color: color.text.primary, fontVariant: ['tabular-nums'] },
   qualityRow: { flexDirection: 'row' },
   qualityText: { ...tType.caption, color: color.text.secondary },
+  // Card.base already applies `gap: space.sm` between direct children — no margin needed here.
+  sectionTitle: { ...tType.bodyStrong, color: color.text.primary },
+  statRow: { flexDirection: 'row', gap: space.md },
 });

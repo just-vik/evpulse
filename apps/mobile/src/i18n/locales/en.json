@@ -127,7 +127,18 @@
         "warning": "Some readings on this trip looked unusual — figures may be approximate.",
         "repaired": "Some data on this trip was automatically repaired from a signal gap.",
         "degraded": "Data quality on this trip is degraded — figures may be approximate."
-      }
+      },
+      "speed": "Speed",
+      "elevation": "Elevation",
+      "elevationGain": "Gain",
+      "power": "Power",
+      "avg": "Avg",
+      "max": "Max",
+      "noSpeedData": "No speed data",
+      "noElevationData": "No elevation data",
+      "noPowerData": "No power data",
+      "noSocData": "No battery data",
+      "errorTelemetry": "Could not load telemetry"
     }
   },
   "charge": {
