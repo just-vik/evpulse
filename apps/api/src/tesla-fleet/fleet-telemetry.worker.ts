@@ -1,11 +1,13 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy, Inject } from '@nestjs/common';
 import Redis from 'ioredis';
 import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'crypto';
 import { REDIS_CLIENT } from '../infra/redis.provider';
 import { PrismaService } from '../prisma/prisma.service';
 import { TelemetryPipelineService } from '../telemetry/telemetry-pipeline.service';
 import { normalizeTeslaPayload } from '../utils/normalizeTeslaTelemetry';
 import { CreateTelemetryPointDto } from '../telemetry/dto/telemetry.dto';
+import { buildTelemetryPointDto } from '../telemetry/raw-telemetry-payload';
 import { isWorkerRole } from '../runtime/runtime-role';
 import { ApiUsageService } from '../billing/api-usage.service';
 
@@ -141,7 +143,10 @@ export class FleetTelemetryWorker implements OnModuleInit, OnModuleDestroy {
   }
 
   private async processEntries(entries: [string, string[]][], source: 'stream' | 'autoclaim'): Promise<void> {
-    const perVehicle = new Map<string, { points: CreateTelemetryPointDto[]; ids: string[] }>();
+    // rawEvents[i] is the exact Tesla Fleet Telemetry event that produced points[i] —
+    // kept in lockstep so TelemetryRaw can persist the real event (see raw-telemetry-payload.ts)
+    // instead of only the already-normalized DTO.
+    const perVehicle = new Map<string, { points: CreateTelemetryPointDto[]; rawEvents: unknown[]; ids: string[] }>();
 
     for (const [id, fields] of entries) {
       const idx = fields.findIndex((f) => f === 'payload');
@@ -167,28 +172,7 @@ export class FleetTelemetryWorker implements OnModuleInit, OnModuleDestroy {
           );
         }
 
-        const dto: CreateTelemetryPointDto & Record<string, any> = {
-          timestamp: new Date(normalized.timestamp),
-          soc: normalized.soc ?? null,
-          batteryRangeKm: normalized.batteryRangeKm ?? null,
-          speed: normalized.speed ?? null,
-          power: normalized.power ?? null,
-          current: normalized.current ?? null,
-          voltage: normalized.voltage ?? null,
-          latitude: normalized.latitude ?? null,
-          longitude: normalized.longitude ?? null,
-          elevationM: normalized.elevationM ?? null,
-          batteryTemp: normalized.batteryTemp ?? null,
-          outsideTemp: normalized.outsideTemp ?? null,
-          insideTemp: normalized.insideTemp ?? null,
-          odometer: normalized.odometer ?? null,
-          heading: normalized.heading ?? null,
-          charging_state: normalized.charging_state || null,
-          shift_state: normalized.shift_state || null,
-          fast_charger_type: normalized.fast_charger_type ?? null,
-          fast_charger_brand: normalized.fast_charger_brand ?? null,
-          charge_energy_added: normalized.charge_energy_added ?? null,
-        };
+        const dto = buildTelemetryPointDto(normalized);
 
         if (normalized.self_driving_km != null || normalized.odometer_km_since_reset != null) {
           try {
@@ -199,9 +183,10 @@ export class FleetTelemetryWorker implements OnModuleInit, OnModuleDestroy {
           } catch { /* non-fatal */ }
         }
 
-        if (!perVehicle.has(vehicleId)) perVehicle.set(vehicleId, { points: [], ids: [] });
+        if (!perVehicle.has(vehicleId)) perVehicle.set(vehicleId, { points: [], rawEvents: [], ids: [] });
         const bucket = perVehicle.get(vehicleId)!;
         bucket.points.push(dto);
+        bucket.rawEvents.push(evt);
         bucket.ids.push(id);
       } catch (err: any) {
         this.logger.error(`Failed to process fleet entry ${id}: ${err.message}`);
@@ -209,7 +194,7 @@ export class FleetTelemetryWorker implements OnModuleInit, OnModuleDestroy {
     }
 
     for (const [vehicleId, bucket] of perVehicle.entries()) {
-      const { points, ids } = bucket;
+      const { points, rawEvents, ids } = bucket;
       if (this.inFlight.has(vehicleId)) {
         this.logger.warn(`[FleetWorker] ${vehicleId} still processing — waiting for previous batch to finish`);
         try {
@@ -218,7 +203,9 @@ export class FleetTelemetryWorker implements OnModuleInit, OnModuleDestroy {
           // Previous batch failed/timed out — continue with current batch attempt.
         }
       }
-      const underlying = this.telemetryPipeline.processBatch(vehicleId, points)
+      const traceId = randomUUID();
+      const underlying = this.telemetryPipeline
+        .processBatch(vehicleId, points, 'fleet_telemetry', traceId, rawEvents)
         .finally(() => this.inFlight.delete(vehicleId));
       this.inFlight.set(vehicleId, underlying);
       try {

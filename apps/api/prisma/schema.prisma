@@ -982,8 +982,15 @@ model TelemetryRaw {
   vehicleId   String
   source      String   // "fleet_telemetry" | "v1_streaming" | "rest_poll" | "mqtt"
   receivedAt  DateTime @default(now())
-  payload     Json     // raw event exactly as received
-  payloadHash String?  // sha256 of normalized payload — for fast dedup queries
+  payload     Json     // shape depends on payloadKind — see payloadKind doc below
+  /// What `payload` actually contains — see raw-telemetry-payload.ts for the reader.
+  ///   "normalized_v1"             — payload is an already-normalized CreateTelemetryPointDto
+  ///                                 (all rows before Oct 2026, and all non-Fleet-Telemetry
+  ///                                 sources until they're migrated too).
+  ///   "tesla_fleet_telemetry_v1"  — payload is the original, unmodified Tesla Fleet
+  ///                                 Telemetry event ({ vin, createdAt, data: [...] }).
+  payloadKind String   @default("normalized_v1")
+  payloadHash String?  // sha256 of `payload` as stored — for fast dedup queries
 
   @@index([vehicleId, receivedAt])
   // Supports keyset pagination for raw replay: WHERE vehicleId … ORDER BY receivedAt, id

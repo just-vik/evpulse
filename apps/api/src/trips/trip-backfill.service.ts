@@ -6,6 +6,7 @@ import { GeocodingService } from '../geocoding/geocoding.service';
 import { TripReconcilerService } from './trip-reconciler.service';
 import { DistributedLockService } from '../common/services/distributed-lock.service';
 import { tripRebuildMaxRangeDays } from './trip-merge-params';
+import { normalizeRawTelemetryPayload } from '../telemetry/raw-telemetry-payload';
 
 /** Full rebuild: delete → detect → filter → reconcile, all executed for real. */
 export interface RebuildTripsResult {
@@ -305,13 +306,18 @@ export class TripBackfillService {
         },
         orderBy: [{ receivedAt: 'asc' }, { id: 'asc' }],
         take: batchSize,
-        select: { id: true, receivedAt: true, payload: true },
+        select: { id: true, receivedAt: true, payload: true, payloadKind: true },
       });
 
       if (!rows.length) break;
 
       for (const row of rows) {
-        const p: any = typeof row.payload === 'string' ? JSON.parse(row.payload as string) : row.payload;
+        const rawPayload = typeof row.payload === 'string' ? JSON.parse(row.payload as string) : row.payload;
+        // Dispatches on payloadKind: legacy rows are already DTO-shaped, new Fleet
+        // Telemetry rows hold the original Tesla event and get normalizeTeslaPayload()
+        // run on them here — see raw-telemetry-payload.ts.
+        const p = normalizeRawTelemetryPayload(rawPayload, row.payloadKind);
+        if (!p) continue;
         const ts: string = p.timestamp ?? row.receivedAt.toISOString();
 
         // Dedup by payload timestamp — raw table has multiple copies per event

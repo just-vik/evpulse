@@ -18,6 +18,7 @@ describe('TelemetryPipelineService', () => {
   let tripDetector: { checkTripState: jest.Mock };
   let chargingDetector: { checkChargingState: jest.Mock };
   let stateMachine: { getVehicleState: jest.Mock; updateFromTelemetry: jest.Mock };
+  let prismaMock: { telemetryRaw: { createMany: jest.Mock } };
 
   beforeEach(async () => {
     telemetryService = {
@@ -47,16 +48,15 @@ describe('TelemetryPipelineService', () => {
       eval: jest.fn().mockResolvedValue(1),
     };
 
+    prismaMock = {
+      telemetryRaw: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TelemetryPipelineService,
         { provide: REDIS_CLIENT, useValue: redisMock },
-        {
-          provide: PrismaService,
-          useValue: {
-            telemetryRaw: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
-          },
-        },
+        { provide: PrismaService, useValue: prismaMock },
         { provide: TelemetryService, useValue: telemetryService },
         { provide: TripDetectorService, useValue: tripDetector },
         { provide: ChargingDetectorService, useValue: chargingDetector },
@@ -208,6 +208,58 @@ describe('TelemetryPipelineService', () => {
     });
 
     expect(h1).not.toEqual(h2);
+  });
+
+  describe('raw payload persistence (telemetry audit, Oct 2026)', () => {
+    // A minimal but realistic Fleet Telemetry webhook event — the shape
+    // FleetTelemetryWorker passes as rawEvents[i].
+    const teslaEvent = {
+      vin: '5YJSA1E26HF000000',
+      createdAt: '2026-03-20T10:00:00.000Z',
+      data: [
+        { key: 'VehicleSpeed', value: { doubleValue: 56 } },
+        { key: 'BatteryLevel', value: { doubleValue: 61 } },
+      ],
+    };
+    const point: any = { timestamp: new Date('2026-03-20T10:00:00.000Z'), soc: 61, speed: 56 };
+
+    it('сохраняет fleet-событие как оригинальный Tesla payload с payloadKind=tesla_fleet_telemetry_v1', async () => {
+      await service.processBatch('veh-raw-1', [point], 'fleet_telemetry', 'trace-1', [teslaEvent]);
+
+      expect(prismaMock.telemetryRaw.createMany).toHaveBeenCalledTimes(1);
+      const [{ data: rows }] = prismaMock.telemetryRaw.createMany.mock.calls[0];
+      expect(rows).toHaveLength(1);
+      expect(rows[0].payload).toEqual(teslaEvent); // the real event, not the DTO
+      expect(rows[0].payloadKind).toBe('tesla_fleet_telemetry_v1');
+    });
+
+    it('без rawEvents продолжает сохранять нормализованный DTO как payloadKind=normalized_v1 (legacy/необновлённые источники)', async () => {
+      await service.processBatch('veh-raw-2', [point], 'rest_poll', 'trace-2');
+
+      const [{ data: rows }] = prismaMock.telemetryRaw.createMany.mock.calls[0];
+      expect(rows[0].payload).toEqual(point);
+      expect(rows[0].payloadKind).toBe('normalized_v1');
+    });
+
+    it('payloadHash зависит от содержимого raw payload, а не от нормализованного DTO', async () => {
+      const sameDtoDifferentRawA = { ...teslaEvent, data: [...teslaEvent.data, { key: 'Extra', value: { doubleValue: 1 } }] };
+      const sameDtoDifferentRawB = { ...teslaEvent, data: [...teslaEvent.data, { key: 'Extra', value: { doubleValue: 2 } }] };
+
+      await service.processBatch('veh-raw-3', [point], 'fleet_telemetry', 'trace-3', [sameDtoDifferentRawA]);
+      await service.processBatch('veh-raw-3', [point], 'fleet_telemetry', 'trace-4', [sameDtoDifferentRawB]);
+
+      const hashA = prismaMock.telemetryRaw.createMany.mock.calls[0][0].data[0].payloadHash;
+      const hashB = prismaMock.telemetryRaw.createMany.mock.calls[1][0].data[0].payloadHash;
+      // Same point (DTO) both times, but different raw payload → different hash:
+      // confirms the hash is computed from what's actually stored (the raw event),
+      // not from the normalized point it produced.
+      expect(hashA).not.toEqual(hashB);
+
+      // Determinism: replaying the exact same raw event again yields the same hash.
+      await service.processBatch('veh-raw-3', [point], 'fleet_telemetry', 'trace-5', [sameDtoDifferentRawA]);
+      const hashA2 = prismaMock.telemetryRaw.createMany.mock.calls[2][0].data[0].payloadHash;
+      expect(hashA2).toEqual(hashA);
+    });
   });
 });
 

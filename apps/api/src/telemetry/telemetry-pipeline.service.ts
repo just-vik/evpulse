@@ -9,6 +9,11 @@ import { ChargingDetectorService } from '../charging/charging-detector.service';
 import { TelemetrySanitizerService } from './telemetry-sanitizer.service';
 import { TelemetryEventEngine, TelemetryVehicleState } from './telemetry-event-engine.service';
 import { CreateTelemetryPointDto } from './dto/telemetry.dto';
+import {
+  PAYLOAD_KIND_NORMALIZED_V1,
+  PAYLOAD_KIND_TESLA_FLEET_TELEMETRY_V1,
+  rawPayloadToPoint,
+} from './raw-telemetry-payload';
 import { VehicleStateMachineService, VehicleState } from '../tesla-fleet/vehicle-state-machine.service';
 import { TelemetryGateway } from '../websockets/telemetry.gateway';
 import { getDataQuality } from '../analytics/vehicle-analytics.service';
@@ -97,6 +102,10 @@ export class TelemetryPipelineService {
     points: CreateTelemetryPointDto[],
     source: 'fleet_telemetry' | 'v1_streaming' | 'rest_poll' | 'mqtt' | 'replay' = 'fleet_telemetry',
     traceId: string = randomUUID(),
+    // Original Tesla event per point, same index as `points`. Optional and
+    // fleet_telemetry-only for now (see FleetTelemetryWorker) — every other
+    // source keeps persisting the normalized DTO as "raw" until migrated too.
+    rawEvents?: unknown[],
   ): Promise<void> {
     const _t0 = Date.now();
     this.logger.debug(`[${traceId}] processBatch start vehicleId=${vehicleId} points=${points.length} source=${source}`);
@@ -109,6 +118,8 @@ export class TelemetryPipelineService {
     // replay pass will process them without data loss.
     const excess  = points.length > MAX_BATCH_SIZE ? points.slice(MAX_BATCH_SIZE) : [];
     const safePts = excess.length > 0 ? points.slice(0, MAX_BATCH_SIZE) : points;
+    // Keep rawEvents aligned index-for-index with safePts through the same clamp.
+    const safeRawEvents = rawEvents && excess.length > 0 ? rawEvents.slice(0, MAX_BATCH_SIZE) : rawEvents;
     if (excess.length > 0) {
       this.logger.warn(
         `[${traceId}] Batch clamped ${points.length} → ${MAX_BATCH_SIZE} for ${vehicleId} (source=${source}). ` +
@@ -157,7 +168,7 @@ export class TelemetryPipelineService {
     if (!lockAcquired) {
       this.logger.debug(`[${traceId}] Pipeline lock busy for ${vehicleId} — skipping detector pass`);
       // Still persist raw events so nothing is lost (use clamped safePts)
-      this.saveRawBatch(vehicleId, safePts, source).catch(() => {});
+      this.saveRawBatch(vehicleId, safePts, source, safeRawEvents).catch(() => {});
       // Replay batches must not re-arm pending — avoids feedback while replay fights for the lock.
       if (source !== 'replay') {
         await this.markRawReplayPending(vehicleId).catch(() => {});
@@ -193,7 +204,7 @@ export class TelemetryPipelineService {
     }, 5_000);
 
     try {
-      await this._processBatchInner(vehicleId, safePts, source, traceId, _t0);
+      await this._processBatchInner(vehicleId, safePts, source, traceId, _t0, safeRawEvents);
     } finally {
       clearInterval(heartbeatTimer);
       // Only release our own lock (compare-and-delete pattern)
@@ -213,10 +224,13 @@ export class TelemetryPipelineService {
     source: 'fleet_telemetry' | 'v1_streaming' | 'rest_poll' | 'mqtt' | 'replay',
     traceId: string,
     _t0: number,
+    rawEvents?: unknown[],
   ): Promise<void> {
     // 0) Persist raw events BEFORE normalization — immutable event store.
     //    Fire-and-forget: never block the hot path for raw storage.
-    this.saveRawBatch(vehicleId, points, source).catch((e) =>
+    //    MUST happen before the sort below: rawEvents[i] is only aligned with
+    //    points[i] in their original (pre-sort) order.
+    this.saveRawBatch(vehicleId, points, source, rawEvents).catch((e) =>
       this.logger.warn(`[${traceId}] [Pipeline] raw save failed for ${vehicleId}: ${e.message}`),
     );
 
@@ -649,21 +663,39 @@ export class TelemetryPipelineService {
     return createHash('sha256').update(canonical).digest('hex').slice(0, 16);
   }
 
+  /**
+   * Persists one TelemetryRaw row per point.
+   *
+   * When `rawEvents[i]` is provided (currently: fleet_telemetry source only — see
+   * FleetTelemetryWorker), it stores the original Tesla event and tags the row
+   * payloadKind = tesla_fleet_telemetry_v1. Otherwise it falls back to storing the
+   * already-normalized point itself (payloadKind = normalized_v1) — the legacy
+   * behaviour, still correct for sources not yet wired to pass rawEvents.
+   *
+   * rawEvents MUST be index-aligned with points and read before points is mutated
+   * (see the call site in _processBatchInner, before the timestamp sort).
+   */
   private async saveRawBatch(
     vehicleId: string,
     points: CreateTelemetryPointDto[],
     source: string,
+    rawEvents?: unknown[],
   ): Promise<void> {
     if (!points.length) return;
     const receivedAt = new Date();
-    const rows = points.map((p) => {
-      const normalized = JSON.stringify(p);
-      const payloadHash = createHash('sha256').update(normalized).digest('hex');
+    const rows = points.map((p, i) => {
+      const rawEvent = rawEvents?.[i];
+      const hasRaw = rawEvent !== undefined;
+      const payload = hasRaw ? rawEvent : p;
+      const payloadKind = hasRaw ? PAYLOAD_KIND_TESLA_FLEET_TELEMETRY_V1 : PAYLOAD_KIND_NORMALIZED_V1;
+      const serialized = JSON.stringify(payload);
+      const payloadHash = createHash('sha256').update(serialized).digest('hex');
       return {
         vehicleId,
         source,
         receivedAt,
-        payload:     p as any,
+        payload: payload as any,
+        payloadKind,
         payloadHash,
       };
     });
@@ -769,22 +801,6 @@ export class TelemetryPipelineService {
     return n;
   }
 
-  private rawPayloadToDto(payload: unknown): CreateTelemetryPointDto | null {
-    if (payload == null || typeof payload !== 'object' || Array.isArray(payload)) return null;
-    const o = payload as Record<string, unknown>;
-    const ts = o.timestamp;
-    let timestamp: Date | undefined;
-    if (ts instanceof Date) timestamp = ts;
-    else if (typeof ts === 'string' || typeof ts === 'number') {
-      const d = new Date(ts);
-      if (!Number.isNaN(d.getTime())) timestamp = d;
-    }
-    if (timestamp == null) return null;
-    const out = { ...o } as CreateTelemetryPointDto;
-    out.timestamp = timestamp;
-    return out;
-  }
-
   /**
    * @param pendingAtMs  epoch ms when contention was first recorded; null → env/default lookback
    */
@@ -836,14 +852,14 @@ export class TelemetryPipelineService {
         },
         orderBy: [{ receivedAt: 'asc' }, { id: 'asc' }],
         take: pageTake,
-        select: { id: true, receivedAt: true, payload: true },
+        select: { id: true, receivedAt: true, payload: true, payloadKind: true },
       });
 
       if (!rows.length) break;
 
       const points: CreateTelemetryPointDto[] = [];
       for (const r of rows) {
-        const dto = this.rawPayloadToDto(r.payload);
+        const dto = rawPayloadToPoint(r.payload, r.payloadKind);
         if (dto) points.push(dto);
       }
 

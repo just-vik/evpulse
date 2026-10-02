@@ -7,7 +7,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { VehiclesService } from '../vehicles/vehicles.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TelemetryPipelineService } from './telemetry-pipeline.service';
-import { CreateTelemetryPointDto } from './dto/telemetry.dto';
+import { rawPayloadToPoint } from './raw-telemetry-payload';
 
 interface ReplayBody {
   from: string; // ISO timestamp
@@ -67,7 +67,7 @@ export class TelemetryReplayController {
         receivedAt: { gte: from, lte: to },
       },
       orderBy: { receivedAt: 'asc' },
-      select: { id: true, payload: true },
+      select: { id: true, payload: true, payloadKind: true },
     });
 
     this.logger.log(
@@ -83,7 +83,11 @@ export class TelemetryReplayController {
     const BATCH = 50;
     let processed = 0;
     for (let i = 0; i < rawEvents.length; i += BATCH) {
-      const batch = rawEvents.slice(i, i + BATCH).map((e) => e.payload as CreateTelemetryPointDto);
+      const batch = rawEvents
+        .slice(i, i + BATCH)
+        .map((e) => rawPayloadToPoint(e.payload, e.payloadKind))
+        .filter((p): p is NonNullable<typeof p> => p != null);
+      if (!batch.length) continue;
       await this.pipeline.processBatch(vehicleId, batch, 'replay');
       processed += batch.length;
     }
