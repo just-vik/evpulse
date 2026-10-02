@@ -36,7 +36,16 @@ export class FleetTelemetryMqttSubscriber implements OnModuleInit, OnModuleDestr
   // Per-VIN last-known values with timestamps — used to fill gaps in sparse batches
   private readonly lastKnown = new Map<string, Map<string, { value: any; ts: number }>>();
 
-  // Fields carried forward when missing from current batch (max age = 2 full update intervals)
+  // Fields carried forward when missing from current batch (max age = 2 full update intervals).
+  //
+  // Power-like fields are deliberately EXCLUDED — see NEVER_CARRY_FORWARD_FIELDS below. Carrying
+  // forward a stale wattage reading and stamping it with the current flush's timestamp
+  // fabricates an energy sample that never happened: E = Σ P × Δt treats "last known
+  // Power, now re-timestamped" as if the car reported that power *at this instant*,
+  // which silently corrupts the energy integral. For a state-like field (Speed,
+  // ChargingState, Gear, ...) that risk doesn't apply — the value is still true
+  // until told otherwise. For an instantaneous power/current/voltage reading, absence
+  // means "unknown right now", not "unchanged".
   private readonly CARRY_FORWARD_FIELDS = new Set([
     'VehicleSpeed', 'Speed',
     'Location',
@@ -45,11 +54,8 @@ export class FleetTelemetryMqttSubscriber implements OnModuleInit, OnModuleDestr
     'Odometer',
     'BatteryLevel',
     'UsableBatteryLevel',      // user-visible SOC (excludes non-usable buffer) — prefer over BatteryLevel
-    'Power',
-    'PackCurrent', 'PackVoltage',
     'ChargeAmps', 'ChargerActualCurrent', 'ChargerVoltage',
     'DCChargingCurrent', 'DCChargingVoltage',
-    'DCChargingPower', 'ACChargingPower',
     'ChargeEnergyAdded', 'DCChargingEnergyIn', 'ACChargingEnergyIn',
     'FastChargerType', 'FastChargerBrand',
     'Heading',
@@ -58,6 +64,16 @@ export class FleetTelemetryMqttSubscriber implements OnModuleInit, OnModuleDestr
     'BatteryRange',            // ideal range (miles, older field name)
     'SelfDrivingMilesSinceReset', // cumulative Autopilot/FSD miles (Tesla Dec 2025+)
     'MilesSinceReset',            // total odometer since factory reset
+  ]);
+
+  // Instantaneous power/current/voltage signals — NEVER carry-forward these (see comment
+  // above CARRY_FORWARD_FIELDS). Kept as an explicit list so a future contributor adding
+  // a new charging/power field has to make a conscious choice instead of defaulting into
+  // the carry-forward set.
+  private readonly NEVER_CARRY_FORWARD_FIELDS = new Set([
+    'Power',
+    'PackCurrent', 'PackVoltage',
+    'DCChargingPower', 'ACChargingPower',
   ]);
 
   // Maximum age for a carried-forward value.
@@ -167,6 +183,10 @@ export class FleetTelemetryMqttSubscriber implements OnModuleInit, OnModuleDestr
     if (known) {
       const now = Date.now();
       for (const fieldName of this.CARRY_FORWARD_FIELDS) {
+        // Defense in depth: never carry forward an instantaneous power/current/voltage
+        // reading, even if it's accidentally re-added to CARRY_FORWARD_FIELDS later.
+        // See the comment above CARRY_FORWARD_FIELDS for why.
+        if (this.NEVER_CARRY_FORWARD_FIELDS.has(fieldName)) continue;
         if (!fields.has(fieldName)) {
           const entry = known.get(fieldName);
           if (entry && now - entry.ts <= this.CARRY_MAX_AGE_MS) {
