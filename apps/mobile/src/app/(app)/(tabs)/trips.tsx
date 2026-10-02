@@ -22,7 +22,21 @@ import { decodePolylineToCoords } from '@/lib/decodePolyline';
  *  is 'HIGH'|'MEDIUM'|'LOW'|null, `qualityScore` is 0-100 or null. There is
  *  NO start/end temperature field anywhere on Trip and no `startBattery`/
  *  `endBattery` — only `startSoc`/`endSoc` exist; those other names were a
- *  dead legacy type on the web side, not real API fields. */
+ *  dead legacy type on the web side, not real API fields.
+ *
+ *  `stats` is the related `TripStats` row — GET /trips/vehicle/:vehicleId
+ *  already does `include: { stats: true }` server-side
+ *  (trip-detector.service.ts getTripsForVehicle), it just wasn't declared
+ *  here, so it never reached the trip detail screen. */
+interface TripStatsRow {
+  avgSpeed: number | null;
+  maxSpeed: number | null;
+  regenEnergyKwh: number | null;
+  elevationGain: number | null;
+  drivingStyle: string | null;
+  trafficStopRatio: number | null;
+}
+
 interface TripRow {
   id: string;
   startTime: string;
@@ -37,6 +51,7 @@ interface TripRow {
   endSoc: number | null;
   qualityScore: number | null;
   reliability: 'HIGH' | 'MEDIUM' | 'LOW' | null;
+  stats?: TripStatsRow | null;
 }
 
 type DateFilter = 'all' | '7d' | '30d' | '90d';
@@ -369,6 +384,17 @@ export default function TripsScreen() {
                   startSoc: item.startSoc != null ? String(item.startSoc) : '',
                   endSoc: item.endSoc != null ? String(item.endSoc) : '',
                   reliability: item.reliability ?? '',
+                  // TripStats — passed as individual scalars (not JSON) to keep route
+                  // params simple/URL-safe. Temporary: once a canonical
+                  // GET /trips/:id endpoint exists, the detail screen should fetch its
+                  // own trip snapshot by id instead of depending on what the list
+                  // screen happened to pass through navigation.
+                  avgSpeed: item.stats?.avgSpeed != null ? String(item.stats.avgSpeed) : '',
+                  maxSpeed: item.stats?.maxSpeed != null ? String(item.stats.maxSpeed) : '',
+                  regenEnergyKwh: item.stats?.regenEnergyKwh != null ? String(item.stats.regenEnergyKwh) : '',
+                  elevationGain: item.stats?.elevationGain != null ? String(item.stats.elevationGain) : '',
+                  trafficStopRatio: item.stats?.trafficStopRatio != null ? String(item.stats.trafficStopRatio) : '',
+                  drivingStyle: item.stats?.drivingStyle ?? '',
                 },
               })
             }

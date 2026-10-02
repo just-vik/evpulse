@@ -24,6 +24,44 @@ interface TripQuality {
   issues: string[];
 }
 
+/**
+ * TripStats, as passed through navigation params from (tabs)/trips.tsx — the backend's
+ * TripStats row (trip.stats, included by GET /trips/vehicle/:vehicleId) via individual
+ * scalar route params rather than a fetch-by-id, since there's no GET /trips/:id yet.
+ * Temporary: once a canonical detail endpoint exists, fetch this directly by tripId
+ * instead of depending on what the list screen happened to pass through.
+ */
+interface TripStats {
+  avgSpeed: number | null;
+  maxSpeed: number | null;
+  regenEnergyKwh: number | null;
+  elevationGain: number | null;
+  drivingStyle: string | null;
+  trafficStopRatio: number | null;
+}
+
+/**
+ * GET /trips/:tripId/points (apps/api/src/trips/trips.controller.ts) — `elev` added in
+ * commit 9b500fd. Fetched here as telemetry data wiring only; not yet used to render
+ * anything (no chart, no map-route replacement) — that's the next commit.
+ */
+interface TripPoint {
+  t: string;
+  lat: number | null;
+  lng: number | null;
+  spd: number | null;
+  pwr: number | null;
+  soc: number | null;
+  elev: number | null;
+}
+
+interface TripPointsResponse {
+  tripId: string;
+  startTime: string;
+  endTime: string | null;
+  points: TripPoint[];
+}
+
 const SEVERITY_TONE: Record<TripQuality['severity'], StatusTone> = {
   ok: 'success',
   warning: 'warning',
@@ -49,12 +87,32 @@ export default function TripDetailScreen() {
     endLocation: string;
     startSoc: string;
     endSoc: string;
+    avgSpeed: string;
+    maxSpeed: string;
+    regenEnergyKwh: string;
+    elevationGain: string;
+    trafficStopRatio: string;
+    drivingStyle: string;
   }>();
 
   const distanceKm = params.distanceKm ? Number(params.distanceKm) : null;
   const efficiencyWhkm = params.efficiencyWhkm ? Number(params.efficiencyWhkm) : null;
   const startSoc = params.startSoc ? Number(params.startSoc) : null;
   const endSoc = params.endSoc ? Number(params.endSoc) : null;
+
+  // trip.stats, as passed through navigation params — see TripStats doc comment above.
+  // Not rendered in this commit; wired up so the next (UI) commit has it available.
+  const stats: TripStats = useMemo(
+    () => ({
+      avgSpeed: params.avgSpeed ? Number(params.avgSpeed) : null,
+      maxSpeed: params.maxSpeed ? Number(params.maxSpeed) : null,
+      regenEnergyKwh: params.regenEnergyKwh ? Number(params.regenEnergyKwh) : null,
+      elevationGain: params.elevationGain ? Number(params.elevationGain) : null,
+      trafficStopRatio: params.trafficStopRatio ? Number(params.trafficStopRatio) : null,
+      drivingStyle: params.drivingStyle || null,
+    }),
+    [params.avgSpeed, params.maxSpeed, params.regenEnergyKwh, params.elevationGain, params.trafficStopRatio, params.drivingStyle],
+  );
 
   const coords = useMemo(() => decodePolylineToCoords(params.polyline || null), [params.polyline]);
   const region = useMemo(() => {
@@ -83,6 +141,24 @@ export default function TripDetailScreen() {
     },
     enabled: !!params.id,
   });
+
+  // Kept independent from qualityQuery (not Promise.all) on purpose: these two
+  // endpoints have unrelated failure modes, and quality must keep rendering even
+  // when points are temporarily unavailable (or vice versa).
+  //
+  // Data wiring only for now — points aren't used to render anything yet (no chart,
+  // no map-route replacement). That's the next commit, once point quality/density
+  // has been checked. decodePolylineToCoords(params.polyline) below is still the
+  // map's only coordinate source.
+  const pointsQuery = useQuery({
+    queryKey: ['trip-points', params.id],
+    queryFn: async () => {
+      const { data } = await api.get<TripPointsResponse>(`/trips/${params.id}/points`);
+      return data;
+    },
+    enabled: !!params.id,
+  });
+  const points = pointsQuery.data?.points ?? [];
 
   const duration = (() => {
     const mins = params.durationMin
