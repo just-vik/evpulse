@@ -16,7 +16,7 @@
     "broker":    "tcp://tesla-mqtt:1883",
     "client_id": "fleet-telemetry",
     "username":  "telemetry_user",
-    "password":  "MCbvzZ8H",
+    "password":  "${MQTT_PASSWORD}",
     "topic_base": "tesla/fleet",
     "qos": 1
   },
