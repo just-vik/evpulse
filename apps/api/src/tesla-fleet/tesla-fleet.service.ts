@@ -99,10 +99,20 @@ export class TeslaFleetService {
     // Strip trailing slash so we can always write `${apiBase}/vehicles`
     this.apiBase = (this.configService.get<string>('TESLA_API_BASE_URL')
       ?? 'https://fleet-api.prd.na.vn.cloud.tesla.com/api/1').replace(/\/$/, '');
-    this.tokenUrl = this.configService.get<string>('TESLA_TOKEN_URL')
-      ?? 'https://auth.tesla.com/oauth2/v3/token';
-    this.authUrl = this.configService.get<string>('TESLA_AUTH_URL')
-      ?? 'https://auth.tesla.com/oauth2/v3/authorize';
+    // No default here, deliberately (Oct 2026, P1.4): auth.tesla.com/oauth2/v3/token
+    // was Tesla's old token-exchange endpoint — fleet-auth.prd.vn.cloud.tesla.com is
+    // required now (server-side token calls have separate rate limits there). A `??`
+    // fallback would make a misconfigured deployment silently authenticate against
+    // the deprecated endpoint instead of failing to start. TESLA_AUTH_URL has no such
+    // stale-endpoint risk (auth.tesla.com/oauth2/v3/authorize is still correct per
+    // Tesla's docs) but is required too, for the same reason: Tesla's auth endpoints
+    // are deployment configuration, not application defaults, and shouldn't be able
+    // to boot with half of secrets/.env missing. Backed up by StartupConfigGuard,
+    // which fails the same way before this constructor even runs — this getOrThrow
+    // is defense in depth for any path that constructs this service outside the
+    // normal startup flow.
+    this.tokenUrl = this.configService.getOrThrow<string>('TESLA_TOKEN_URL');
+    this.authUrl = this.configService.getOrThrow<string>('TESLA_AUTH_URL');
 
     // Vehicle Command Proxy — signs commands for newer Tesla vehicles (post-2021 BLE firmware).
     // Internal Docker service, self-signed TLS. Falls back to direct API if not configured.
