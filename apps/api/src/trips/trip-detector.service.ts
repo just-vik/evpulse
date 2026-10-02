@@ -18,6 +18,8 @@ import {
   TripBuffer,
   BufferedPoint,
   computeDistanceKm,
+  calculateMovingDistanceKm,
+  calculateMovingAverageSpeed,
   haversineKm,
   encodePolyline,
   douglasPeucker,
@@ -1284,8 +1286,14 @@ export class TripDetectorService {
       .filter(p => !p.interpolated)
       .map(p => p.speed)
       .filter(s => s > 0);
-    const avgSpeed = speeds.length ? speeds.reduce((a, b) => a + b) / speeds.length : null;
     const maxSpeed = speeds.length ? Math.max(...speeds) : null;
+    // avgSpeed = moving distance / moving time, both built on the same segment
+    // definition (real points only, ≤60s apart, speed > 5 km/h) — see
+    // calculateMovingDistanceKm's doc comment for why this replaced a plain
+    // mean(speed samples), which was unweighted by time and biased toward
+    // whichever driving regime happened to send more samples.
+    const movingDistanceKm = calculateMovingDistanceKm(buffer.points);
+    const avgSpeed = calculateMovingAverageSpeed(movingDistanceKm, buffer.movingMs);
     const totalMs = buffer.stoppedMs + buffer.movingMs;
     const trafficStopRatio = totalMs > 0
       ? Math.round((buffer.stoppedMs / totalMs) * 1000) / 1000

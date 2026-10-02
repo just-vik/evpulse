@@ -261,10 +261,12 @@ export class TripBuilderService implements OnModuleInit {
       ? Math.round((buf.energyKwh * 1000 / distanceKm) * 10) / 10
       : null;
 
-    const movingPts = buf.points.filter(p => !p.interpolated && (p.speed ?? 0) > 0);
-    const avgSpeedKmh = movingPts.length
-      ? movingPts.reduce((s, p) => s + (p.speed ?? 0), 0) / movingPts.length
-      : null;
+    // Same moving-segment semantics as the finalized TripStats.avgSpeed (see
+    // calculateMovingDistanceKm/calculateMovingAverageSpeed below) — kept in sync
+    // deliberately so the live preview during a trip and the persisted value after
+    // it ends don't diverge on two different formulas.
+    const movingDistanceKm = calculateMovingDistanceKm(buf.points);
+    const avgSpeedKmh = calculateMovingAverageSpeed(movingDistanceKm, buf.movingMs);
 
     return {
       distanceKm:     Math.round(distanceKm * 10) / 10,
@@ -386,6 +388,69 @@ export function computeDistanceKm(
     );
   }
   return km;
+}
+
+/**
+ * Same cap TripBuilderService.addPoint() uses for movingMs's `dtSafe` (see that
+ * method) — a segment whose real inter-point gap exceeds this is excluded from both
+ * moving time AND moving distance, not just time. Keeping the two in one constant
+ * here would create a circular import (addPoint lives on the class below); the
+ * value is duplicated intentionally with this comment as the tripwire — if one
+ * changes, the other must too, or movingDistanceKm/movingMs drift apart again.
+ */
+const MOVING_SEGMENT_MAX_MS = 60_000;
+
+/** Same threshold addPoint() uses for `stopped = point.speed <= 5`. */
+const MOVING_SPEED_THRESHOLD_KMH = 5;
+
+/**
+ * Moving distance — sums haversine distance only over "moving segments": consecutive
+ * REAL (non-interpolated) points where the real gap between them is ≤60s and the car
+ * was moving (speed > 5 km/h) at the end of the segment. This mirrors movingMs's own
+ * segment definition exactly (addPoint()'s dtSafe/stopped logic) so
+ * movingDistanceKm and movingMs describe the same set of real-world time — unlike
+ * computeDistanceKm() above, which sums every consecutive pair unconditionally
+ * (including across interpolated gaps), movingDistanceKm must not, or an avgSpeed
+ * built on top of it would overstate speed on any trip with a signal gap (see the
+ * Oct 2026 avgSpeed investigation — distanceKm already includes gap-spanning
+ * segments that movingMs excludes; this function exists so a *new* numerator
+ * doesn't inherit that mismatch).
+ *
+ * Interpolated points never form or extend a moving segment on their own — a
+ * segment requires BOTH endpoints to be real telemetry, exactly like movingMs only
+ * ever accumulates from the real incoming point in addPoint(), never from the
+ * synthetic points addPoint() inserts alongside it.
+ */
+export function calculateMovingDistanceKm(
+  points: Pick<BufferedPoint, 'latitude' | 'longitude' | 'timestamp' | 'speed' | 'interpolated'>[],
+): number {
+  let km = 0;
+  for (let i = 1; i < points.length; i++) {
+    const prev = points[i - 1];
+    const curr = points[i];
+    if (prev.interpolated || curr.interpolated) continue;
+    const dtMs = curr.timestamp.getTime() - prev.timestamp.getTime();
+    if (dtMs <= 0 || dtMs > MOVING_SEGMENT_MAX_MS) continue;
+    if ((curr.speed ?? 0) <= MOVING_SPEED_THRESHOLD_KMH) continue;
+    km += haversineKm(prev.latitude, prev.longitude, curr.latitude, curr.longitude);
+  }
+  return km;
+}
+
+/**
+ * avgSpeed = movingDistanceKm / movingHours — "average speed while actually
+ * moving", built on the moving-segment definition above (calculateMovingDistanceKm)
+ * paired with the existing movingMs accumulator. Pure arithmetic only — no
+ * geometry/segment logic lives here, so it's trivially testable on its own.
+ */
+export function calculateMovingAverageSpeed(
+  movingDistanceKm: number,
+  movingMs: number,
+): number | null {
+  if (!(movingDistanceKm > 0)) return null;
+  if (!(movingMs > 0)) return null;
+  const movingHours = movingMs / 3_600_000;
+  return movingDistanceKm / movingHours;
 }
 
 export function haversineKm(
