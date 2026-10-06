@@ -556,19 +556,16 @@ export default function VehicleDetailPage() {
     sendCmd(preset.command, (preset.params as Record<string, unknown>) ?? {})
   }
 
-  const applyOptimistic = (cmd: string, params: Record<string, unknown>): Telemetry | null => {
+  // Only the direct lock result is applied optimistically. Vehicle state is never
+  // guessed here: the backend's vehicleState/freshness arrive on the next snapshot.
+  const applyOptimistic = (cmd: string, _params: Record<string, unknown>): Telemetry | null => {
     const snap = telemetry ? { ...telemetry } : null
     setTelemetry(prev => {
       if (!prev) return prev
       switch (cmd) {
-        case 'lock':           return { ...prev, locked: true }
-        case 'unlock':         return { ...prev, locked: false }
-        case 'wake':           return { ...prev, vehicleState: 'online' }
-        case 'climate':
-          return { ...prev, vehicleState: params.action === 'start' ? 'conditioning' : prev.vehicleState }
-        case 'start-charging': return { ...prev, vehicleState: 'charging' }
-        case 'stop-charging':  return { ...prev, vehicleState: 'online' }
-        default:               return prev
+        case 'lock':   return { ...prev, locked: true }
+        case 'unlock': return { ...prev, locked: false }
+        default:       return prev
       }
     })
     return snap
@@ -577,7 +574,7 @@ export default function VehicleDetailPage() {
   const sendCmd = async (cmd: string, params: Record<string, unknown> = {}, loadingKey?: string) => {
     if (!accessToken || !vehicleId) return
     const state = String(telemetry?.vehicleState ?? '').toLowerCase()
-    const isAsleepNow = state === 'sleeping' || state === 'asleep' || state === 'offline'
+    const isAsleepNow = state === 'sleeping' || state === 'offline'
     const isWakeCmd = cmd === 'wake'
 
     if (isAsleepNow && !isWakeCmd) {

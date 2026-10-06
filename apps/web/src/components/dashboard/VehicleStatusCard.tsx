@@ -23,11 +23,10 @@ const STATE_CONFIG: Record<string, {
   text: string;
 }> = {
   driving:  { icon: Car,          bg: 'bg-emerald-500/15', border: 'border-emerald-500/30', text: 'text-emerald-700 dark:text-emerald-300' },
+  stopped:  { icon: Car,          bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-700 dark:text-emerald-300' },
   charging: { icon: Zap,          bg: 'bg-blue-500/15',    border: 'border-blue-500/30',    text: 'text-blue-700 dark:text-blue-300'    },
   parked:   { icon: ParkingCircle,bg: 'bg-slate-500/15',   border: 'border-slate-500/30',   text: 'text-muted-foreground'   },
-  online:   { icon: Car,          bg: 'bg-sky-500/15',     border: 'border-sky-500/30',     text: 'text-sky-700 dark:text-sky-300'      },
   sleeping: { icon: Moon,         bg: 'bg-indigo-500/10',  border: 'border-indigo-500/20',  text: 'text-indigo-700 dark:text-indigo-300'  },
-  asleep:   { icon: Moon,         bg: 'bg-indigo-500/10',  border: 'border-indigo-500/20',  text: 'text-indigo-700 dark:text-indigo-300'  },
   waking:   { icon: Car,          bg: 'bg-amber-500/10',   border: 'border-amber-500/25',   text: 'text-amber-700 dark:text-amber-300'    },
   offline:  { icon: WifiOff,      bg: 'bg-red-500/10',     border: 'border-red-500/20',     text: 'text-red-700 dark:text-red-400'      },
 };

@@ -34,7 +34,17 @@ export function useTeslaTelemetry(vehicleId: string | null) {
       );
     }
 
-    function onTelemetry({ data }: { data: Record<string, unknown> }) {
+    // Freshness and timestamps come from the backend envelope (dataQuality,
+    // dataFreshnessSec, lastUpdate — set by TelemetryGateway from the telemetry
+    // timestamp), never from the arrival of this message. Sensor fields in `data`
+    // are patched only when present (diff emits carry changed fields only).
+    function onTelemetry(payload: {
+      data: Record<string, unknown>;
+      dataQuality?: VehicleStatusResponse['dataQuality'];
+      dataFreshnessSec?: number | null;
+      lastUpdate?: string | null;
+    }) {
+      const { data } = payload;
       const patch: Partial<VehicleStatusResponse> = {};
       if (data.soc            != null) patch.soc            = Number(data.soc);
       if (data.speed          != null) patch.speed          = Number(data.speed);
@@ -47,11 +57,9 @@ export function useTeslaTelemetry(vehicleId: string | null) {
       if (data.locked         != null) patch.locked         = Boolean(data.locked);
       if (data.vehicleState   != null) patch.vehicleState   = String(data.vehicleState);
       if (data.chargingState  != null) patch.chargingState  = String(data.chargingState);
-      if (data.lastUpdate     != null) patch.lastUpdate     = String(data.lastUpdate);
-      if (data.timestamp      != null) patch.lastUpdate     = String(data.timestamp);
-      // Mark data as fresh when WS push arrives
-      patch.dataQuality    = 'REALTIME';
-      patch.dataFreshnessSec = 0;
+      if (payload.dataQuality       != null) patch.dataQuality       = payload.dataQuality;
+      if (payload.dataFreshnessSec  !== undefined) patch.dataFreshnessSec = payload.dataFreshnessSec;
+      if (payload.lastUpdate        !== undefined) patch.lastUpdate       = payload.lastUpdate;
       patchCache(patch);
     }
 
@@ -64,24 +72,34 @@ export function useTeslaTelemetry(vehicleId: string | null) {
       patchCache(patch);
     }
 
-    function onVehicleOnline({ dataQuality }: { dataQuality: string }) {
-      patchCache({
-        vehicleState: 'online',
-        dataQuality: (dataQuality as VehicleStatusResponse['dataQuality']) ?? 'REALTIME',
-        isOnline: true,
-      });
-      // Refresh from HTTP once to pull full state after reconnect
+    // Backend announces the back-online transition only as a hint. It does not carry
+    // an authoritative state, so the REST snapshot (which computes state and freshness)
+    // is the only thing that gets written into the cache.
+    function onVehicleOnline() {
       queryClient.invalidateQueries({ queryKey: ['vehicle-status', vehicleId] });
+    }
+
+    // A trip started or ended changes the derived trip state in the status snapshot and
+    // the aggregates built from trips. Invalidate instead of patching: the server row is
+    // the only source of truth for those values.
+    function onTripLifecycle() {
+      queryClient.invalidateQueries({ queryKey: ['vehicle-status', vehicleId] });
+      queryClient.invalidateQueries({ queryKey: ['trips-today', vehicleId] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-full', vehicleId] });
     }
 
     on('telemetry',      onTelemetry);
     on('vehicle:update', onVehicleUpdate);
     on('vehicle:online', onVehicleOnline);
+    on('trip:started',   onTripLifecycle);
+    on('trip:ended',     onTripLifecycle);
 
     return () => {
       off('telemetry',      onTelemetry);
       off('vehicle:update', onVehicleUpdate);
       off('vehicle:online', onVehicleOnline);
+      off('trip:started',   onTripLifecycle);
+      off('trip:ended',     onTripLifecycle);
       if (subscribedRef.current) {
         unsubscribeVehicle(subscribedRef.current);
         subscribedRef.current = null;

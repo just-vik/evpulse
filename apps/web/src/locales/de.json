@@ -86,13 +86,12 @@
     "notificationSettings": "Benachrichtigungseinstellungen"
   },
   "status": {
-    "online": "Online",
     "offline": "Offline",
-    "asleep": "Schlafend",
     "sleeping": "Schlafend",
     "driving": "Fährt",
     "charging": "Lädt",
     "parked": "Geparkt",
+    "stopped": "Steht",
     "waking": "Aufwachen",
     "active": "Aktiv",
     "idle": "Leerlauf",

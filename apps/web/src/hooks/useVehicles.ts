@@ -8,6 +8,7 @@ import { useUIStore } from '@/stores/uiStore';
 import { useLayoutStore } from '@/stores/layout.store';
 import { apiClient } from '@/lib/api';
 import { Vehicle, VehicleCommand } from '@/types/api';
+import { isVehicleAwake } from '@/lib/vehicleState';
 
 /**
  * Hook to fetch all vehicles
@@ -102,8 +103,8 @@ export function useVehiclePolling(vehicleId: string | null | undefined) {
     // Auto-refresh based on vehicle state
     let interval = 30 * 1000; // 30 seconds
 
-    if (vehicle.vehicleState === 'online') {
-      interval = 10 * 1000; // 10 seconds if online
+    if (isVehicleAwake(vehicle.vehicleState)) {
+      interval = 10 * 1000; // 10 seconds while the car is awake
     }
 
     if (vehicle.chargingState === 'charging' || vehicle.chargingState === 'discharging') {

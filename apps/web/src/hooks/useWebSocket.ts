@@ -18,6 +18,18 @@ let sharedToken: string | null = null;
 let listenersBound = false;
 let refCount = 0;
 
+// Vehicle rooms the UI wants joined, refcounted across hook instances. Kept here
+// (not per hook) so every 'connect' — including the first one, and any reconnect —
+// re-joins them. Socket.io room membership is per connection; without this, a
+// reconnect silently stops all vehicle-room events until the page remounts.
+const desiredVehicles = new Map<string, number>();
+
+function joinDesiredVehicles(socket: Socket) {
+  for (const vehicleId of desiredVehicles.keys()) {
+    socket.emit('subscribe:vehicle', { vehicleId });
+  }
+}
+
 export function useWebSocket(options: UseWebSocketOptions = {}) {
   const {
     onConnect,
@@ -41,6 +53,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     if (listenersBound) return;
     listenersBound = true;
     socket.on('connect', () => {
+      joinDesiredVehicles(socket);
       setWsConnected(true);
       forceRender();
       onConnect?.();
@@ -108,13 +121,28 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     if (sharedSocket) sharedSocket.off(event, callback);
   }, []);
 
+  // Desire is recorded even before the socket exists; the join itself happens on
+  // 'connect' (see joinDesiredVehicles). Emitting only when already connected is what
+  // dropped the first subscription on a cold page load.
   const subscribeVehicle = useCallback((vehicleId: string) => {
-    emit('subscribe:vehicle', { vehicleId });
-  }, [emit]);
+    const count = desiredVehicles.get(vehicleId) ?? 0;
+    desiredVehicles.set(vehicleId, count + 1);
+    if (count === 0 && sharedSocket?.connected) {
+      sharedSocket.emit('subscribe:vehicle', { vehicleId });
+    }
+  }, []);
 
   const unsubscribeVehicle = useCallback((vehicleId: string) => {
-    emit('unsubscribe:vehicle', { vehicleId });
-  }, [emit]);
+    const count = (desiredVehicles.get(vehicleId) ?? 0) - 1;
+    if (count > 0) {
+      desiredVehicles.set(vehicleId, count);
+      return;
+    }
+    desiredVehicles.delete(vehicleId);
+    if (sharedSocket?.connected) {
+      sharedSocket.emit('unsubscribe:vehicle', { vehicleId });
+    }
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;

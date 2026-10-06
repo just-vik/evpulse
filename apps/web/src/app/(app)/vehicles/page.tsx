@@ -8,6 +8,7 @@ import { Car, Settings, Battery, Gauge, Eye, EyeOff } from 'lucide-react'
 import { useVehicles } from '@/hooks/useVehicles'
 import { useLayoutStore } from '@/stores/layout.store'
 import { formatRelativeTime } from '@/lib/utils'
+import { isVehicleAwake } from '@/lib/vehicleState'
 import { EmptyState } from '@/shared/ui/EmptyState'
 import { ErrorState } from '@/shared/ui/ErrorState'
 
@@ -96,7 +97,8 @@ export default function VehiclesPage() {
           <div className={`grid gap-3 ${vehicles!.length === 1 ? 'grid-cols-1 max-w-xl' : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3'}`}>
             {vehicles!.map((v: any, i: number) => {
               const selected = selectedVehicleId === v.id
-              const online = v.status === 'active' || v.vehicleState === 'online'
+              // EVPulse state only: v.status is the Tesla account field, not a vehicle state.
+              const online = isVehicleAwake(v.vehicleState)
 
               return (
                 <motion.div
@@ -143,7 +145,7 @@ export default function VehiclesPage() {
                             online ? 'text-emerald-400' : 'text-muted-foreground'
                           }`}
                         >
-                          {online ? t('status.online') : v.vehicleState ?? t('status.offline')}
+                          {t(`status.${v.vehicleState ?? 'offline'}`, { defaultValue: t('status.offline') })}
                         </span>
                       </div>
                     </div>

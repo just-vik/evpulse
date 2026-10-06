@@ -4,7 +4,7 @@
 
 export type VehicleModel = 'S' | '3' | 'X' | 'Y'
 
-export type VehicleState = 'online' | 'asleep' | 'offline'
+export type VehicleState = 'driving' | 'stopped' | 'parked' | 'charging' | 'sleeping' | 'waking' | 'offline'
 
 export type ChargeState = 'charging' | 'discharging' | 'idle'
 

@@ -52,6 +52,11 @@ export interface VehicleStatusResponse {
   isOnline:          boolean
   dataFreshnessSec:  number | null
   dataQuality:       'REALTIME' | 'DELAYED' | 'STALE' | 'OFFLINE'
+  // VehicleStateContract v1 (backend Patch B). freshness mirrors dataQuality under the
+  // public spelling; lastTelemetryAt is the real telemetry timestamp, not server time.
+  freshness?:        'realtime' | 'delayed' | 'stale' | 'no_data'
+  lastTelemetryAt?:  string | null
+  trip?:             { id: string | null; state: 'active' | 'waiting_for_telemetry' | 'completed' | null }
 }
 
 // ── Vehicle spec (combined Vehicle + VehicleSpec) ────────────────────────────

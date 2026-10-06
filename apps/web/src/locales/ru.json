@@ -86,13 +86,12 @@
     "notificationSettings": "Настройки уведомлений"
   },
   "status": {
-    "online": "Онлайн",
     "offline": "Офлайн",
-    "asleep": "Спит",
     "sleeping": "Спит",
     "driving": "Едет",
     "charging": "Заряжается",
     "parked": "Припаркован",
+    "stopped": "Стоит",
     "waking": "Просыпается",
     "active": "Активен",
     "idle": "Простой",
