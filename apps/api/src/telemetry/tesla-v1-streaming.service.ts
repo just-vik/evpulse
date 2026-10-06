@@ -225,7 +225,7 @@ export class TeslaV1StreamingService implements OnModuleInit, OnModuleDestroy {
     await this.buffer.addPoint(session.vehicleId, {
       ...point,
       timestamp: point.timestamp,
-    });
+    }, 'v1_streaming');
   }
 
   // ─────────────────────────────────────────────────────────────────────────

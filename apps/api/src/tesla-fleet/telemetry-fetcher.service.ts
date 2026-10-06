@@ -503,7 +503,7 @@ export class TelemetryFetcherService {
       await this.telemetryBuffer.addPoint(vehicleId, {
         ...telemetryPoint,
         timestamp: new Date(telemetryPoint.timestamp),
-      });
+      }, 'rest_poll');
 
       // Detect charging state transitions for backfill
       const currentChargingState = telemetryPoint.charging_state ?? '';

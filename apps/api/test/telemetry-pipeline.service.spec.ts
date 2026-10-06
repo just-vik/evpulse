@@ -91,7 +91,7 @@ describe('TelemetryPipelineService', () => {
         power: 10,
         batteryRangeKm: 200,
       } as any,
-    ]);
+    ], 'fleet_telemetry');
 
     expect(telemetryService.createManyTelemetryPoints).toHaveBeenCalledTimes(1);
     const [, aggregated] =
@@ -125,7 +125,7 @@ describe('TelemetryPipelineService', () => {
         latitude: 10.0005,
         longitude: 10.0005,
       } as any,
-    ]);
+    ], 'fleet_telemetry');
 
     expect(telemetryService.createManyTelemetryPoints).toHaveBeenCalledTimes(1);
     const [, aggregated] =
@@ -162,7 +162,7 @@ describe('TelemetryPipelineService', () => {
         latitude: 10.00001,
         longitude: 10.00001,
       } as any,
-    ]);
+    ], 'fleet_telemetry');
 
     const [, aggregated] =
       telemetryService.createManyTelemetryPoints.mock.calls[0];
@@ -178,7 +178,7 @@ describe('TelemetryPipelineService', () => {
       { timestamp: new Date(), soc: 10 } as any,
       { timestamp: new Date(), soc: 20 } as any,
       { timestamp: new Date(), soc: 30 } as any,
-    ]);
+    ], 'fleet_telemetry');
 
     expect(tripDetector.checkTripState).toHaveBeenCalledTimes(3);
     expect(chargingDetector.checkChargingState).toHaveBeenCalledTimes(3);

@@ -43,7 +43,7 @@ export class TelemetryStreamWorker implements OnModuleInit {
           await this.telemetryBuffer.addPoint(vehicleId, {
             ...normalized,
             timestamp: new Date(normalized.timestamp),
-          });
+          }, 'mqtt');
         } catch {
           // best-effort: do not crash worker on malformed message
         }

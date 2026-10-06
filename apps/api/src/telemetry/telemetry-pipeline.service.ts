@@ -28,6 +28,17 @@ import { SnapshotService } from '../events/snapshot.service';
 const DEDUP_TTL_SEC = 600;
 
 /**
+ * Where a telemetry batch actually came from. Must be passed explicitly by every
+ * caller — no default (see processBatch()). A wrong/defaulted source here produces
+ * a wrong TelemetryRaw.payloadKind and a misleading "(fleet telemetry)" tag on
+ * every downstream log line, even for REST-polled or V1-streamed data (confirmed
+ * in production Oct 2026: TelemetryBufferService's shared buffer let REST-sourced
+ * points masquerade as 'fleet_telemetry' purely because that used to be the
+ * parameter's default value).
+ */
+export type TelemetrySource = 'fleet_telemetry' | 'v1_streaming' | 'rest_poll' | 'mqtt' | 'replay';
+
+/**
  * Maximum number of telemetry points processed in a single pipeline batch.
  *
  * Backpressure guard: keeps per-batch DB write latency bounded and ensures
@@ -100,7 +111,9 @@ export class TelemetryPipelineService {
   async processBatch(
     vehicleId: string,
     points: CreateTelemetryPointDto[],
-    source: 'fleet_telemetry' | 'v1_streaming' | 'rest_poll' | 'mqtt' | 'replay' = 'fleet_telemetry',
+    // No default — every caller must say where this batch actually came from.
+    // See the TelemetrySource doc comment above for why a default was wrong.
+    source: TelemetrySource,
     traceId: string = randomUUID(),
     // Original Tesla event per point, same index as `points`. Optional and
     // fleet_telemetry-only for now (see FleetTelemetryWorker) — every other

@@ -2,12 +2,17 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Inject } from '@nest
 import Redis from 'ioredis';
 import { SpanStatusCode } from '@opentelemetry/api';
 import { REDIS_CLIENT } from '../infra/redis.provider';
-import { TelemetryPipelineService } from './telemetry-pipeline.service';
+import { TelemetryPipelineService, TelemetrySource } from './telemetry-pipeline.service';
 import { CreateTelemetryPointDto } from './dto/telemetry.dto';
 import { tracer } from '../otel';
 
 interface BufferedPoint extends CreateTelemetryPointDto {
   vehicleId: string;
+  // Required — this buffer is shared by REST polling, MQTT streaming, and V1
+  // streaming (see addPoint() callers), so it can never guess the source;
+  // it must carry whatever the producer actually was all the way through to
+  // TelemetryPipelineService.processBatch().
+  source: TelemetrySource;
 }
 
 /**
@@ -79,10 +84,11 @@ export class TelemetryBufferService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Добавить точку в поток (вызывается TelemetryFetcherService и TelemetryStreamWorker).
+   * Добавить точку в поток (вызывается TelemetryFetcherService, TelemetryStreamWorker,
+   * TeslaV1StreamingService). `source` is required — see BufferedPoint.source.
    */
-  async addPoint(vehicleId: string, dto: CreateTelemetryPointDto): Promise<void> {
-    const payload: BufferedPoint = { vehicleId, ...dto };
+  async addPoint(vehicleId: string, dto: CreateTelemetryPointDto, source: TelemetrySource): Promise<void> {
+    const payload: BufferedPoint = { vehicleId, source, ...dto };
     await this.redis.xadd(
       this.STREAM_KEY,
       'MAXLEN', '~', String(this.STREAM_MAXLEN),
@@ -163,19 +169,24 @@ export class TelemetryBufferService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async processBatch(points: BufferedPoint[]): Promise<void> {
-    const byVehicle = new Map<string, CreateTelemetryPointDto[]>();
+    // Grouped by (vehicleId, source) — not vehicleId alone — because this buffer
+    // is shared across producers (REST, MQTT, V1 streaming) and a batch must
+    // never blend sources under a single processBatch() call: that call tags
+    // the *whole* batch's TelemetryRaw rows with one payloadKind/source.
+    const byVehicleAndSource = new Map<string, { vehicleId: string; source: TelemetrySource; dtos: CreateTelemetryPointDto[] }>();
     for (const p of points) {
-      const { vehicleId, ...dto } = p;
-      if (!byVehicle.has(vehicleId)) byVehicle.set(vehicleId, []);
-      byVehicle.get(vehicleId)!.push(dto);
+      const { vehicleId, source, ...dto } = p;
+      const key = `${vehicleId}|${source}`;
+      if (!byVehicleAndSource.has(key)) byVehicleAndSource.set(key, { vehicleId, source, dtos: [] });
+      byVehicleAndSource.get(key)!.dtos.push(dto);
     }
 
-    for (const [vehicleId, dtos] of byVehicle.entries()) {
-      await this.telemetryPipeline.processBatch(vehicleId, dtos);
+    for (const { vehicleId, source, dtos } of byVehicleAndSource.values()) {
+      await this.telemetryPipeline.processBatch(vehicleId, dtos, source);
     }
 
     this.logger.debug(
-      `Flushed ${points.length} point(s) for ${byVehicle.size} vehicle(s)`,
+      `Flushed ${points.length} point(s) for ${byVehicleAndSource.size} (vehicle, source) group(s)`,
     );
   }
 }
