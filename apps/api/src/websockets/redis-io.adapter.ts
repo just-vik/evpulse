@@ -11,6 +11,8 @@ import type Redis from 'ioredis';
  */
 export class RedisIoAdapter extends IoAdapter {
   private adapterConstructor?: ReturnType<typeof createAdapter>;
+  private pubClient?: Redis;
+  private subClient?: Redis;
 
   constructor(
     app: INestApplicationContext,
@@ -20,14 +22,22 @@ export class RedisIoAdapter extends IoAdapter {
   }
 
   async connectToRedis(): Promise<void> {
-    const pubClient = this.redis.duplicate();
-    const subClient = this.redis.duplicate();
-    this.adapterConstructor = createAdapter(pubClient, subClient);
+    this.pubClient = this.redis.duplicate();
+    this.subClient = this.redis.duplicate();
+    this.adapterConstructor = createAdapter(this.pubClient, this.subClient);
   }
 
   createIOServer(port: number, options?: ServerOptions): any {
     const server = super.createIOServer(port, options);
     server.adapter(this.adapterConstructor);
     return server;
+  }
+
+  async close(server: any): Promise<void> {
+    await super.close(server);
+    const clients = [this.pubClient, this.subClient];
+    this.pubClient = undefined;
+    this.subClient = undefined;
+    await Promise.all(clients.map((client) => client?.quit().catch(() => undefined)));
   }
 }

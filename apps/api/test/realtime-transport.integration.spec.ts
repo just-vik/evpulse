@@ -1,14 +1,15 @@
-import { createServer, type Server as HttpServer } from 'http';
 import type { AddressInfo } from 'net';
-import { Server } from 'socket.io';
-import { createAdapter } from '@socket.io/redis-adapter';
+import type { Server as HttpServer } from 'http';
+import type { Server } from 'socket.io';
 import { Emitter } from '@socket.io/redis-emitter';
 import { io as connect, type Socket as ClientSocket } from 'socket.io-client';
 import Redis from 'ioredis';
+import { RedisIoAdapter } from '../src/websockets/redis-io.adapter';
 
-// Cross-process delivery: an emitter publishes into Redis (as the worker does) and the
-// Socket.IO server with the Redis adapter (as the api does) fans it out to clients in
-// the room. The emitter never touches the io server object, so the only path is Redis.
+// Production topology, with the real classes: the api side is RedisIoAdapter's Socket.IO
+// server, the worker side is an emitter-only publisher on its own Redis connection, Redis
+// is the broker, and the clients are ordinary socket.io-client sockets. The emitter never
+// touches the server object, so a delivered event proves it went through Redis.
 // Runs only when a Redis instance is configured: REDIS_HOST (+ REDIS_PORT, REDIS_PASSWORD).
 const REDIS_HOST = process.env.REDIS_HOST;
 const describeWithRedis = REDIS_HOST ? describe : describe.skip;
@@ -20,11 +21,10 @@ describeWithRedis('realtime transport: worker emit → api Socket.IO → browser
     password: process.env.REDIS_PASSWORD || undefined,
   };
 
-  let http: HttpServer;
-  let io: Server;
-  let apiPub: Redis;
-  let apiSub: Redis;
+  let apiRedis: Redis;
   let workerRedis: Redis;
+  let adapter: RedisIoAdapter;
+  let server: Server;
   let port: number;
   const clients: ClientSocket[] = [];
 
@@ -44,29 +44,31 @@ describeWithRedis('realtime transport: worker emit → api Socket.IO → browser
 
   beforeAll(async () => {
     jest.setTimeout(20_000);
-    apiPub = new Redis(redisConfig);
-    apiSub = new Redis(redisConfig);
+    apiRedis = new Redis(redisConfig);
     workerRedis = new Redis(redisConfig);
 
-    http = createServer();
-    io = new Server(http);
-    io.adapter(createAdapter(apiPub, apiSub));
-    io.of('/telemetry').on('connection', (socket) => {
+    adapter = new RedisIoAdapter(undefined as any, apiRedis);
+    await adapter.connectToRedis();
+    // Port 0 without an attached HTTP server: socket.io opens its own listener.
+    server = adapter.createIOServer(0) as Server;
+    const httpServer = (server as unknown as { httpServer: HttpServer }).httpServer;
+    if (!httpServer.listening) {
+      await new Promise<void>((resolve) => httpServer.once('listening', () => resolve()));
+    }
+    port = (httpServer.address() as AddressInfo).port;
+    server.of('/telemetry').on('connection', (socket) => {
       socket.on('subscribe', (vehicleId: string, ack: () => void) => {
         socket.join(`vehicle:${vehicleId}`);
         ack();
       });
     });
-    await new Promise<void>((resolve) => http.listen(0, () => resolve()));
-    port = (http.address() as AddressInfo).port;
   });
 
   afterAll(async () => {
     clients.forEach((c) => c.close());
-    await new Promise<void>((resolve) => io.close(() => resolve()));
+    await adapter.close(server);
     workerRedis.disconnect();
-    apiPub.disconnect();
-    apiSub.disconnect();
+    apiRedis.disconnect();
   });
 
   it('delivers a worker-published trip event to the client joined to that vehicle room', async () => {
@@ -95,5 +97,16 @@ describeWithRedis('realtime transport: worker emit → api Socket.IO → browser
 
     await inRoomGot;
     expect(otherGot).toEqual([]);
+  });
+
+  it('api-originated emit (the local path through the same adapter) reaches the room exactly once', async () => {
+    const client = await joinedClient('veh-3');
+    const got: unknown[] = [];
+    client.on('vehicle:update', (payload) => got.push(payload));
+
+    server.of('/telemetry').to('vehicle:veh-3').emit('vehicle:update', { data: { state: 'parked' } });
+
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(got).toEqual([{ data: { state: 'parked' } }]);
   });
 });
