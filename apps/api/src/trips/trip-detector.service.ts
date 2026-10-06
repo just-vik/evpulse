@@ -1011,6 +1011,35 @@ export class TripDetectorService {
     }
     if (!buffer || !tripId) return;
 
+    // ── Live-state fencing (Oct 2026 Trip lifecycle audit) ──────────────────
+    // A live buffer's dbTripId can go stale without this call ever knowing:
+    //   - restored from a Redis checkpoint (TripBuilder.onModuleInit /
+    //     restoreFromDb) whose Trip row was since deleted by another writer;
+    //   - finalized elsewhere independently (endTime already set) while this
+    //     buffer kept accumulating against the same id.
+    // Re-validate ownership/state against Postgres immediately before the
+    // first mutation, not just at restore time: existence alone isn't
+    // enough, it must still be OPEN and still belong to this vehicle. This
+    // is a staleness check, not atomic DB fencing — the existing vehicle
+    // lock (checkTripState's lock:trip:{vehicleId}) is what actually
+    // serializes every finalizeTripToDb() call for this vehicle; Postgres
+    // remains authoritative for whether the Trip this check just read is
+    // still live, Redis is only ever a recovery hint.
+    const trip = await this.prisma.trip.findUnique({ where: { id: tripId } });
+    if (!trip || trip.vehicleId !== vehicleId || trip.endTime !== null) {
+      this.logger.warn(
+        `[Trip] Stale live state for ${vehicleId} (dbTripId=${tripId}) — ` +
+        `${!trip ? 'Trip no longer exists' : trip.endTime !== null ? 'Trip already finalized' : 'vehicleId mismatch'}. ` +
+        `Discarding ${buffer.points.length} buffered point(s) without writing them.`,
+      );
+      // tripBuilder.finalize() above already cleared TripBuilder's own
+      // mem/checkpoint; also clear the shared "current trip" pointer other
+      // consumers (TripEngineV2) key off, so nothing downstream keeps
+      // treating this stale id as current.
+      await this.redis.del(`trip:id:${vehicleId}`);
+      return;
+    }
+
     // ── Bulk-write buffered points ────────────────────────────────────────
     if (buffer.points.length > 0) {
       await this.prisma.tripPoint.createMany({
@@ -1173,9 +1202,8 @@ export class TripDetectorService {
     }
 
     // ── Energy ────────────────────────────────────────────────────────────
-    const trip = await this.prisma.trip.findUnique({ where: { id: tripId } });
-    if (!trip) return;
-
+    // `trip` was already fetched and validated (exists, open, owned by this
+    // vehicle) by the live-state fencing check above — no need to re-fetch.
     const vehicle = await this.prisma.vehicle.findUnique({
       where: { id: vehicleId }, include: { vehicleSpec: true },
     });
