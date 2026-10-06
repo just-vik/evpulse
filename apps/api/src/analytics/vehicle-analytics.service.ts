@@ -157,14 +157,18 @@ export class VehicleAnalyticsService {
     }
 
     const latestTsMs = latest.timestamp ? new Date(latest.timestamp as any).getTime() : NaN;
+    // dbState.lastUpdate is "when the domain vehicle state last changed" (e.g.
+    // setSleeping() stamps it on every failed REST poll, with no new telemetry
+    // at all) — a different axis from "when real telemetry was last received".
+    // Freshness/lastUpdate must be computed ONLY from the real telemetry
+    // timestamp, or a confirmed-sleeping vehicle with zero data for hours can
+    // still read back as REALTIME simply because the last poll attempt (which
+    // found nothing) happened to run recently. Kept available (not deleted)
+    // for any future state-change-timeline use, just no longer blended in here.
     const stateTsMs = dbState?.lastUpdate ? new Date(dbState.lastUpdate as any).getTime() : NaN;
-    const effectiveTsMs = Math.max(
-      Number.isFinite(latestTsMs) ? latestTsMs : -Infinity,
-      Number.isFinite(stateTsMs) ? stateTsMs : -Infinity,
-    );
     const lastUpdateTs =
-      Number.isFinite(effectiveTsMs) && effectiveTsMs > 0
-        ? new Date(effectiveTsMs).toISOString()
+      Number.isFinite(latestTsMs) && latestTsMs > 0
+        ? new Date(latestTsMs).toISOString()
         : null;
     const freshnessSec = lastUpdateTs
       ? Math.floor((Date.now() - new Date(lastUpdateTs).getTime()) / 1000)
