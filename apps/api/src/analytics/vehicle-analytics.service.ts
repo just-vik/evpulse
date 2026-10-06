@@ -5,6 +5,7 @@ import { RedisService } from '../redis/redis.service';
 import { BatteryAnalyticsService } from '../battery/battery-analytics.service';
 import { VampireDrainService } from '../telemetry/vampire-drain.service';
 import { TariffResolverService } from '../charging/tariff-resolver.service';
+import { classifyVehicleState } from '../tesla-fleet/vehicle-state-machine.service';
 
 /**
  * Data quality levels derived from telemetry freshness.
@@ -34,6 +35,39 @@ export function getDataQuality(freshnessSec: number | null): DataQuality {
   if (freshnessSec < 60)  return 'REALTIME';
   if (freshnessSec < 300) return 'DELAYED';
   return 'STALE';
+}
+
+/**
+ * Public Contract spelling of the same freshness scale (VehicleStateContract v1).
+ * Pure re-spelling of getDataQuality() — OFFLINE is renamed no_data because
+ * "no telemetry" is a data condition, not a claim that the car is unreachable.
+ */
+export type Freshness = 'realtime' | 'delayed' | 'stale' | 'no_data';
+
+export function toFreshness(quality: DataQuality): Freshness {
+  switch (quality) {
+    case 'REALTIME': return 'realtime';
+    case 'DELAYED':  return 'delayed';
+    case 'STALE':    return 'stale';
+    case 'OFFLINE':  return 'no_data';
+  }
+}
+
+export type TripContractState = 'active' | 'waiting_for_telemetry' | 'completed' | null;
+
+/**
+ * Trip state is derived, never persisted: an open Trip row (endTime IS NULL) is
+ * 'active' while telemetry is flowing, and becomes 'waiting_for_telemetry' once
+ * the freshness of the vehicle's telemetry degrades. 'completed' is not produced
+ * here — this resolver only ever looks at OPEN trips, and a completed trip is not
+ * active for the vehicle-level contract.
+ */
+export function resolveTripContractState(
+  hasActiveTrip: boolean,
+  freshness: Freshness,
+): TripContractState {
+  if (!hasActiveTrip) return null;
+  return freshness === 'stale' || freshness === 'no_data' ? 'waiting_for_telemetry' : 'active';
 }
 
 @Injectable()
@@ -68,12 +102,20 @@ export class VehicleAnalyticsService {
       return JSON.parse(cached);
     }
 
-    const [latest, dbState, activeChargingSession] = await Promise.all([
+    const [latest, dbState, activeChargingSession, activeTrip] = await Promise.all([
       this.telemetryService.getLatestPoint(vehicleId),
       this.prisma.vehicleState.findUnique({ where: { vehicleId } }),
       // Check for an open charging session — if one exists the car IS charging regardless
       // of what the stale REST-poll chargingState says.
       this.prisma.chargingSession.findFirst({
+        where: { vehicleId, endTime: null },
+        orderBy: { startTime: 'desc' },
+        select: { id: true },
+      }),
+      // Trip DB row is the authority for "is there an active trip" — completion is
+      // endTime != null regardless of which writer set it. Redis trip:id:{vehicleId}
+      // is deliberately NOT consulted here (cache/recovery only, never authority).
+      this.prisma.trip.findFirst({
         where: { vehicleId, endTime: null },
         orderBy: { startTime: 'desc' },
         select: { id: true },
@@ -151,6 +193,12 @@ export class VehicleAnalyticsService {
         isOnline: false,
         dataFreshnessSec: null,
         dataQuality: 'OFFLINE' as DataQuality,
+        freshness: 'no_data' as Freshness,
+        lastTelemetryAt: null,
+        trip: {
+          id: activeTrip?.id ?? null,
+          state: resolveTripContractState(!!activeTrip, 'no_data'),
+        },
       };
       await this.cacheSet(cacheKey, JSON.stringify(empty), 5);
       return empty;
@@ -174,6 +222,7 @@ export class VehicleAnalyticsService {
       ? Math.floor((Date.now() - new Date(lastUpdateTs).getTime()) / 1000)
       : null;
     const dataQualityVal = getDataQuality(freshnessSec);
+    const freshnessValue = toFreshness(dataQualityVal);
 
     // ── Vehicle state inference ────────────────────────────────────────────
     // Rule 1: If DB state is "sleeping/offline/waking" but fresh telemetry just
@@ -184,14 +233,20 @@ export class VehicleAnalyticsService {
     //         "driving" for >120s without data ⟹ show as "parked" (STALE) or
     //         "offline" (OFFLINE) so the UI doesn't permanently show "Едет".
     const PASSIVE_STATES = new Set(['offline', 'Offline', 'sleeping', 'Sleeping', 'waking', 'Waking']);
-    const ACTIVE_STATES  = new Set(['driving', 'Driving', 'charging', 'Charging']);
+    const ACTIVE_STATES  = new Set(['driving', 'Driving', 'stopped', 'Stopped', 'charging', 'Charging']);
     const telemetryAgeSec = freshnessSec ?? Infinity;
     const telemetryFresh  = telemetryAgeSec < 180; // 3 minutes
 
+    const classifiedNow = classifyVehicleState({
+      speed:         latest.speed,
+      chargingState: (latest as any).charging_state ?? dbState?.chargingState ?? null,
+      shiftState:    (latest as any).shift_state ?? null,
+    });
+
     let vehicleState: string =
       PASSIVE_STATES.has(dbState?.state ?? '') && telemetryFresh
-        ? this.resolveState(latest.speed, latest.power)
-        : (dbState?.state ?? this.resolveState(latest.speed, latest.power));
+        ? classifiedNow
+        : (dbState?.state ?? classifiedNow);
 
     // Demote active states when we can't confirm them (data too old)
     if (ACTIVE_STATES.has(vehicleState) &&
@@ -240,6 +295,14 @@ export class VehicleAnalyticsService {
       isOnline:        dataQualityVal === 'REALTIME',
       dataFreshnessSec: freshnessSec,
       dataQuality:     dataQualityVal,
+      // VehicleStateContract v1 fields. Same freshness value as dataQuality, just
+      // the public spelling; lastTelemetryAt is the real telemetry timestamp (Patch A).
+      freshness:       freshnessValue,
+      lastTelemetryAt: lastUpdateTs,
+      trip: {
+        id:    activeTrip?.id ?? null,
+        state: resolveTripContractState(!!activeTrip, freshnessValue),
+      },
     };
 
     await this.cacheSet(cacheKey, JSON.stringify(result), 5);
@@ -541,14 +604,6 @@ export class VehicleAnalyticsService {
       ]);
 
     return { status, tripsToday, chargingSummary, costSummary, batteryHealth, vampireDrain };
-  }
-
-  private resolveState(speed?: number | null, power?: number | null): string {
-    // Use 2 km/h threshold (not 0) to filter GPS drift noise that produces tiny
-    // non-zero speed values when the car is stationary.
-    if (speed != null && speed > 2) return 'Driving';
-    if (power != null && power > 1) return 'Charging';
-    return 'Parked';
   }
 }
 

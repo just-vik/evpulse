@@ -110,9 +110,16 @@ describe('TelemetryGateway.emitTelemetryUpdate freshness', () => {
 
     gateway.emitTelemetryUpdate('veh-1', { soc: 80 });
 
+    // Exact allowlist on purpose: adding a top-level key is a Contract change and
+    // must be an explicit, reviewed edit here — never an accidental leak of VIN/tokens.
+    // freshness (enum) and lastTelemetryAt (ISO timestamp) are the VehicleStateContract v1
+    // fields, shared with REST getVehicleStatus(); neither carries identifying data.
     const payload = lastPayload(emit);
     expect(Object.keys(payload).sort()).toEqual(
-      ['data', 'dataFreshnessSec', 'dataQuality', 'lastUpdate', 'timestamp', 'type', 'vehicleId'].sort(),
+      [
+        'data', 'dataFreshnessSec', 'dataQuality', 'freshness',
+        'lastTelemetryAt', 'lastUpdate', 'timestamp', 'type', 'vehicleId',
+      ].sort(),
     );
   });
 

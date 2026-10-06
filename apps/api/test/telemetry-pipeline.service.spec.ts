@@ -261,5 +261,19 @@ describe('TelemetryPipelineService', () => {
       expect(hashA2).toEqual(hashA);
     });
   });
+
+  describe('vehicle-state propagation (VehicleStateContract v1)', () => {
+    it('передаёт shift_state последней точки в updateFromTelemetry — без него D/R на 0 km/h не отличить от parked', async () => {
+      const ts = new Date('2026-03-12T10:00:00.000Z');
+      await service.processBatch('veh-gear-1', [
+        { timestamp: ts, soc: 60, speed: 0, power: 0, shift_state: 'D', charging_state: 'Disconnected' } as any,
+      ], 'fleet_telemetry');
+
+      expect(stateMachine.updateFromTelemetry).toHaveBeenCalledWith(
+        'veh-gear-1',
+        expect.objectContaining({ speed: 0, shift_state: 'D' }),
+      );
+    });
+  });
 });
 

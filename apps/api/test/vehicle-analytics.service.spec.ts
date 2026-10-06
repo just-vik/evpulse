@@ -75,6 +75,7 @@ describe('VehicleAnalyticsService.getVehicleStatus — freshness reflects real t
     const prisma = {
       vehicleState: { findUnique: jest.fn().mockResolvedValue(opts.dbState) },
       chargingSession: { findFirst: jest.fn().mockResolvedValue(null) },
+      trip: { findFirst: jest.fn().mockResolvedValue(null) },
       telemetryPoint: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest.fn().mockResolvedValue([]),
     };

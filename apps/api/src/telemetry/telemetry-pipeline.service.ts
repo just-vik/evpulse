@@ -370,6 +370,7 @@ export class TelemetryPipelineService {
       speed:          latestPoint.speed,
       power:          latestPoint.power,
       charging_state: (latestPoint as any).charging_state ?? null,
+      shift_state:    latestPoint.shift_state ?? null,
     });
 
     // When MQTT reveals the car just woke from sleep, set wake-hint so the REST

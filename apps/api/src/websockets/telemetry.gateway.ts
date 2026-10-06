@@ -13,7 +13,7 @@ import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { VehiclesService } from '../vehicles/vehicles.service';
-import { getDataQuality, type DataQuality } from '../analytics/vehicle-analytics.service';
+import { getDataQuality, toFreshness, type DataQuality, type Freshness } from '../analytics/vehicle-analytics.service';
 
 /** Envelope of the `telemetry` WS event — `data` carries the raw sensor
  *  fields (unchanged, whatever the caller passed); `lastUpdate`/
@@ -26,6 +26,11 @@ export interface TelemetryUpdatePayload {
   lastUpdate: string | null;
   dataQuality: DataQuality;
   dataFreshnessSec: number | null;
+  // VehicleStateContract v1 parity with REST getVehicleStatus(): same freshness
+  // value under the public spelling, and lastTelemetryAt = the real telemetry
+  // timestamp (same value as lastUpdate here — both come from sourceTimestamp).
+  freshness: Freshness;
+  lastTelemetryAt: string | null;
   timestamp: string;
 }
 
@@ -227,13 +232,16 @@ export class TelemetryGateway
         : null;
     }
 
+    const dataQuality = getDataQuality(dataFreshnessSec);
     const payload: TelemetryUpdatePayload = {
       type: 'telemetry',
       vehicleId,
       data,
       lastUpdate,
-      dataQuality: getDataQuality(dataFreshnessSec),
+      dataQuality,
       dataFreshnessSec,
+      freshness: toFreshness(dataQuality),
+      lastTelemetryAt: lastUpdate,
       timestamp: new Date().toISOString(),
     };
 

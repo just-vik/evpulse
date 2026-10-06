@@ -7,6 +7,7 @@ export enum VehicleState {
   OFFLINE  = 'offline',
   SLEEPING = 'sleeping',
   PARKED   = 'parked',
+  STOPPED  = 'stopped',
   CHARGING = 'charging',
   DRIVING  = 'driving',
   WAKING   = 'waking',
@@ -19,6 +20,48 @@ export interface VehicleStateData {
   shouldPoll: boolean
 }
 
+/**
+ * Speed above which the car counts as moving for vehicle-state classification.
+ * Single source for this classifier — do not inline the literal elsewhere.
+ * Deliberately separate from the trip engines' own thresholds (trip-detector and
+ * telemetry-event-engine use 5 km/h; trip-engine-v2 and trip-cleanup use 2 km/h);
+ * unifying those is a separate domain decision, not part of the state contract.
+ */
+export const MOVING_SPEED_THRESHOLD_KMH = 2;
+
+/**
+ * Single source of truth for classifying the 4 states derivable from one
+ * telemetry point (speed/charging_state/shift_state) — DRIVING, CHARGING,
+ * STOPPED, PARKED. SLEEPING/OFFLINE/WAKING are NOT part of this: they depend
+ * on context a single point doesn't carry (REST poll success/failure, idle
+ * duration), and stay owned by determineState()'s own pre-checks and by
+ * setSleeping()/markOffline()-style calls elsewhere.
+ *
+ * Unifies two paths that had silently diverged (State Contract audit, Oct
+ * 2026): determineState() (REST) used `speed > 0` and checked charging
+ * before driving; updateFromTelemetry() (generic buffer path) used
+ * `speed > 2` and checked driving before charging. Neither read shift_state,
+ * so a car stopped at a light in D/R was indistinguishable from genuinely
+ * parked — exactly the "0 km/h ⇒ Припаркован" complaint. Resolution:
+ *   - speed > 2 (not > 0): filters GPS-drift noise that produces tiny
+ *     non-zero speeds while the car is stationary.
+ *   - charging_state === 'Charging' takes precedence over speed, matching
+ *     determineState()'s existing order and this codebase's established
+ *     "open charging session is ground truth" principle
+ *     (see VehicleAnalyticsService.getVehicleStatus()).
+ */
+export function classifyVehicleState(input: {
+  speed?: number | null;
+  chargingState?: string | null;
+  shiftState?: string | null;
+}): VehicleState {
+  if (input.chargingState === 'Charging') return VehicleState.CHARGING;
+  const speed = input.speed ?? 0;
+  if (speed > MOVING_SPEED_THRESHOLD_KMH) return VehicleState.DRIVING;
+  if (input.shiftState === 'D' || input.shiftState === 'R') return VehicleState.STOPPED;
+  return VehicleState.PARKED;
+}
+
 @Injectable()
 export class VehicleStateMachineService {
 
@@ -26,6 +69,10 @@ export class VehicleStateMachineService {
 
   private readonly POLLING_INTERVALS = {
     [VehicleState.DRIVING]:  2,
+    // STOPPED is a vehicle state, not a motion state: a red light must not buy the
+    // most expensive REST cadence. When telemetry push is live it updates the state
+    // immediately regardless of this interval — 30s governs only the REST fallback.
+    [VehicleState.STOPPED]:  30,
     [VehicleState.CHARGING]: 8,
     [VehicleState.PARKED]:   30,
     [VehicleState.SLEEPING]: 600,
@@ -102,21 +149,17 @@ export class VehicleStateMachineService {
       speed?: number | null;
       power?: number | null;
       charging_state?: string | null;
+      shift_state?: string | null;
     },
   ): Promise<{ justWoke: boolean; newState: VehicleState; prevState: VehicleState | null }> {
-    const speed = point.speed ?? 0;
-    const power = point.power ?? 0;
     const chargingState = point.charging_state ?? null;
 
-    let newState: VehicleState;
-    if (speed > 2) {
-      newState = VehicleState.DRIVING;
-    } else if (chargingState === 'Charging') {
-      // Only use charging_state signal — power alone is ambiguous (HVAC, preconditioning)
-      newState = VehicleState.CHARGING;
-    } else {
-      newState = VehicleState.PARKED;
-    }
+    // Only use charging_state signal — power alone is ambiguous (HVAC, preconditioning).
+    const newState = classifyVehicleState({
+      speed:         point.speed,
+      chargingState,
+      shiftState:    point.shift_state,
+    });
 
     // Detect wake transition: sleeping/offline/waking → parked/driving/charging
     // When cache is empty (API restart), fall back to DB to detect the transition.
@@ -239,17 +282,12 @@ export class VehicleStateMachineService {
     const chargeState = data.charge_state
     const vehicleState = data.vehicle_state
 
-    if (chargeState?.charging_state === 'Charging') {
-      return VehicleState.CHARGING
-    }
-
-    if (driveState?.speed > 0) {
-      return VehicleState.DRIVING
-    }
-
     // SLEEPING requires idle > 10 min — is_user_present=false fires immediately after
     // the driver exits the car, but the car is still awake (PARKED) for several minutes.
     // Using the drive_state timestamp avoids misclassifying a freshly-parked car as sleeping.
+    // Checked ahead of classifyVehicleState(): its own speed===0 / not-charging guard
+    // already excludes every case classifyVehicleState() would resolve to CHARGING or
+    // DRIVING, so reordering here doesn't change which branch wins — behavior-preserving.
     if (vehicleState?.is_user_present === false &&
       driveState?.speed === 0 &&
       chargeState?.charging_state !== 'Charging') {
@@ -262,7 +300,11 @@ export class VehicleStateMachineService {
       }
     }
 
-    return VehicleState.PARKED
+    return classifyVehicleState({
+      speed:         driveState?.speed,
+      chargingState: chargeState?.charging_state,
+      shiftState:    driveState?.shift_state,
+    });
   }
 
   /**
