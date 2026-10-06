@@ -9,7 +9,10 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger } from '@nestjs/common';
+import { Inject, Logger, Optional } from '@nestjs/common';
+import { Emitter } from '@socket.io/redis-emitter';
+import type Redis from 'ioredis';
+import { REDIS_CLIENT } from '../infra/redis.provider';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { VehiclesService } from '../vehicles/vehicles.service';
@@ -42,6 +45,8 @@ const MAX_CONNECTIONS_PER_USER = 5;
 /** Minimum ms between subscribe:vehicle events from the same socket */
 const SUBSCRIBE_RATE_LIMIT_MS  = 1_000;
 
+const TELEMETRY_NAMESPACE = '/telemetry';
+
 @WebSocketGateway({
   cors: {
     origin: (process.env.FRONTEND_URL || 'http://localhost:3000')
@@ -49,7 +54,7 @@ const SUBSCRIBE_RATE_LIMIT_MS  = 1_000;
       .map((s) => s.trim()),
     credentials: true,
   },
-  namespace: '/telemetry',
+  namespace: TELEMETRY_NAMESPACE,
 })
 export class TelemetryGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
@@ -66,11 +71,37 @@ export class TelemetryGateway
   /** socketId → timestamp of last subscribe:vehicle event */
   private readonly lastSubscribeAt   = new Map<string, number>();
 
+  // Worker processes have no socket server. They publish through this emitter and
+  // the api process's Redis adapter delivers to the browsers in each room.
+  private readonly emitter?: Emitter;
+
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly vehiclesService: VehiclesService,
-  ) {}
+    @Optional() @Inject(REDIS_CLIENT) redis?: Redis,
+  ) {
+    // Publish failures are logged, not left as unhandled rejections (Node would
+    // terminate the worker). A lost event is covered by the REST snapshot refetch.
+    const publisher = redis && {
+      publish: (channel: string, message: Buffer) =>
+        redis.publish(channel, message).catch((err: Error) =>
+          this.logger.warn(`Realtime publish failed: ${err.message}`),
+        ),
+    };
+    this.emitter = publisher ? new Emitter(publisher).of(TELEMETRY_NAMESPACE) : undefined;
+    if (!redis) {
+      this.logger.warn('Redis client not injected — realtime events from this process will not be delivered');
+    }
+  }
+
+  private deliver(room: string, event: string, payload: object): void {
+    if (this.server) {
+      this.server.to(room).emit(event, payload);
+      return;
+    }
+    this.emitter?.to(room).emit(event, payload);
+  }
 
   afterInit(server: Server) {
     this.logger.log('WebSocket Gateway initialized');
@@ -209,8 +240,6 @@ export class TelemetryGateway
     data: Record<string, unknown>,
     sourceTimestamp?: string | Date | null,
   ) {
-    if (!this.server) return;
-
     // Distinguish "not passed" (undefined → assume now, matches every real
     // caller today) from an explicit `null` ("caller knows there's no valid
     // timestamp" → unknown freshness → OFFLINE, same semantics as
@@ -246,22 +275,20 @@ export class TelemetryGateway
     };
 
     // Основное событие, которое слушает фронтенд
-    this.server.to(`vehicle:${vehicleId}`).emit('telemetry', payload);
+    this.deliver(`vehicle:${vehicleId}`, 'telemetry', payload);
   }
 
   // Emit trip started — frontend shows live "In progress" card immediately
   emitTripStarted(vehicleId: string, trip: any) {
-    if (!this.server) return;
-    this.server.to(`vehicle:${vehicleId}`).emit('trip:started', { vehicleId, trip });
+    this.deliver(`vehicle:${vehicleId}`, 'trip:started', { vehicleId, trip });
   }
 
   // Emit trip ended — frontend finalises the card with real metrics
   emitTripEnded(vehicleId: string, trip: any) {
-    if (!this.server) return;
-    this.server.to(`vehicle:${vehicleId}`).emit('trip:ended', { vehicleId, trip });
+    this.deliver(`vehicle:${vehicleId}`, 'trip:ended', { vehicleId, trip });
   }
 
-  // Emit live trip stats during an active trip — no-op in worker (no WS server)
+  // Emit live trip stats during an active trip — delivered directly in api, via Redis in worker
   emitLiveTripUpdate(vehicleId: string, payload: {
     tripId:    string;
     tripState: string;
@@ -287,23 +314,20 @@ export class TelemetryGateway
       interpolated: number;
     };
   }) {
-    if (!this.server) return;
-    this.server.to(`vehicle:${vehicleId}`).emit('trip:live', { vehicleId, ...payload });
+    this.deliver(`vehicle:${vehicleId}`, 'trip:live', { vehicleId, ...payload });
   }
 
   // Emit a single GPS point during an active trip for real-time polyline building.
   // Lightweight: only lat/lng/speed/ts — no recalculated stats.
   emitTripPoint(vehicleId: string, tripId: string, lat: number, lng: number, speed: number) {
-    if (!this.server) return;
-    this.server.to(`vehicle:${vehicleId}`).emit('trip:point', {
+    this.deliver(`vehicle:${vehicleId}`, 'trip:point', {
       vehicleId, tripId, lat, lng, speed, ts: Date.now(),
     });
   }
 
   // Emit vehicle back-online after OFFLINE period — frontend can show "reconnected" toast
   emitVehicleOnline(vehicleId: string, dataQuality: string) {
-    if (!this.server) return;
-    this.server.to(`vehicle:${vehicleId}`).emit('vehicle:online', {
+    this.deliver(`vehicle:${vehicleId}`, 'vehicle:online', {
       vehicleId,
       dataQuality,
       timestamp: new Date().toISOString(),
@@ -312,7 +336,6 @@ export class TelemetryGateway
 
   // Emit vehicle state change
   emitVehicleStateChange(vehicleId: string, state: string) {
-    if (!this.server) return;
     const payload = {
       type: 'vehicle-update',
       vehicleId,
@@ -320,6 +343,6 @@ export class TelemetryGateway
       timestamp: new Date().toISOString(),
     };
 
-    this.server.to(`vehicle:${vehicleId}`).emit('vehicle:update', payload);
+    this.deliver(`vehicle:${vehicleId}`, 'vehicle:update', payload);
   }
 }

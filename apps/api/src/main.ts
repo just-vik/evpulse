@@ -9,6 +9,8 @@ import * as compression from 'compression';
 import * as cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { getAppRole, isApiRole } from './runtime/runtime-role';
+import { REDIS_CLIENT } from './infra/redis.provider';
+import { RedisIoAdapter } from './websockets/redis-io.adapter';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -27,6 +29,12 @@ async function bootstrap() {
     logger: ['error', 'warn', 'log', 'debug', 'verbose'],
     rawBody: true,
   });
+
+  // Socket.IO must fan out events published by the worker process via Redis.
+  // Set before listen(): gateways bind to the io server when the app starts.
+  const realtimeAdapter = new RedisIoAdapter(app, app.get(REDIS_CLIENT));
+  await realtimeAdapter.connectToRedis();
+  app.useWebSocketAdapter(realtimeAdapter);
 
   // Security middleware
   app.use(helmet());

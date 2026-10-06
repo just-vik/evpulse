@@ -128,3 +128,39 @@ describe('TelemetryGateway.emitTelemetryUpdate freshness', () => {
     expect(() => gateway.emitTelemetryUpdate('veh-1', { soc: 80 })).not.toThrow();
   });
 });
+
+describe('TelemetryGateway delivery — process role decides the transport', () => {
+  it('worker (no socket server): publishes trip lifecycle through Redis instead of dropping it', () => {
+    const redis = { publish: jest.fn().mockResolvedValue(1) };
+    const gateway = new TelemetryGateway({} as any, {} as any, {} as any, redis as any);
+
+    gateway.emitTripEnded('veh-1', { id: 'trip-1' });
+
+    expect(redis.publish).toHaveBeenCalledTimes(1);
+  });
+
+  it('api (socket server present): delivers directly and never touches Redis', () => {
+    const redis = { publish: jest.fn() };
+    const gateway = new TelemetryGateway({} as any, {} as any, {} as any, redis as any);
+    const emit = jest.fn();
+    (gateway as any).server = { to: jest.fn().mockReturnValue({ emit }) };
+
+    gateway.emitTripEnded('veh-1', { id: 'trip-1' });
+
+    expect(emit).toHaveBeenCalledWith('trip:ended', expect.objectContaining({ vehicleId: 'veh-1' }));
+    expect(redis.publish).not.toHaveBeenCalled();
+  });
+});
+
+describe('TelemetryGateway worker publish — Redis failure is logged, never an unhandled rejection', () => {
+  it('a rejected publish is logged as a warning and does not throw', async () => {
+    const redis = { publish: jest.fn().mockRejectedValue(new Error('ECONNREFUSED')) };
+    const gateway = new TelemetryGateway({} as any, {} as any, {} as any, redis as any);
+    const warn = jest.spyOn((gateway as any).logger, 'warn').mockImplementation(() => undefined);
+
+    expect(() => gateway.emitTripEnded('veh-1', { id: 'trip-1' })).not.toThrow();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('ECONNREFUSED'));
+  });
+});
