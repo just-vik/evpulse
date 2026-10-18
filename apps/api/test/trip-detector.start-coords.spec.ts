@@ -44,6 +44,10 @@ function buildRedisMock() {
     get:      jest.fn(async (k: string) => store.get(k) ?? null),
     set:      jest.fn(async (k: string, v: string, ..._rest: any[]) => { store.set(k, v); return 'OK'; }),
     del:      jest.fn(async (k: string) => { store.delete(k); return 1; }),
+    eval:     jest.fn(async (_script: string, _numKeys: number, key: string, token: string) => {
+      if (store.get(key) === token) { store.delete(key); return 1; }
+      return 0;
+    }),
     keys:     jest.fn(async (pattern: string) => {
       const prefix = pattern.replace('*', '');
       return [...store.keys()].filter(k => k.startsWith(prefix));

@@ -93,6 +93,7 @@ export class GeocodingService {
         'User-Agent': 'EVPulse/1.0 (tesla-analytics; contact@evpulse.app)',
         'Accept-Language': 'de,en',
       },
+      signal: AbortSignal.timeout(5_000),
     });
 
     if (!res.ok) throw new Error(`Nominatim HTTP ${res.status}`);

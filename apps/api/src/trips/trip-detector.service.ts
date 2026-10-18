@@ -1,4 +1,5 @@
 import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../infra/redis.provider';
@@ -121,15 +122,22 @@ export class TripDetectorService {
   ): Promise<void> {
     // Distributed lock: prevents race conditions when multiple API instances run.
     // If another instance is processing this vehicle right now, skip silently.
-    const lockKey = `lock:trip:${vehicleId}`;
+    const lockKey   = `lock:trip:${vehicleId}`;
+    const lockToken = randomUUID();
     // ioredis v5 overload: set(key, value, 'PX', ms, 'NX') → 'OK' | null
-    const acquired = await (this.redis as any).set(lockKey, '1', 'PX', 5_000, 'NX');
+    const acquired = await (this.redis as any).set(lockKey, lockToken, 'PX', 5_000, 'NX');
     if (!acquired) return;
     try {
       await this._checkTripStateInner(vehicleId, data);
       await this.persistDetectorState(vehicleId);
     } finally {
-      await this.redis.del(lockKey);
+      // Atomic compare-and-delete: release only our own lock so that a process
+      // whose TTL expired cannot delete a new owner's lock.
+      await (this.redis as any)
+        .eval(LUA_TRIP_LOCK_CAS_DEL, 1, lockKey, lockToken)
+        .catch((e: Error) => this.logger.debug(
+          `[Trip] lock:trip release failed for ${vehicleId}: ${e.message}`,
+        ));
     }
   }
 
@@ -2015,3 +2023,16 @@ function computeConfidence(
     speedConsistency * 0.5 + signalScore * 0.3 + 0.2 - gapPenalty,
   ));
 }
+
+/**
+ * Atomic compare-and-delete Lua script for lock:trip release.
+ * Only deletes the key when its value matches the caller's token, preventing
+ * a process whose TTL expired from deleting a new owner's lock.
+ */
+const LUA_TRIP_LOCK_CAS_DEL = [
+  "if redis.call('get', KEYS[1]) == ARGV[1] then",
+  "  return redis.call('del', KEYS[1])",
+  "else",
+  "  return 0",
+  "end",
+].join('\n');
