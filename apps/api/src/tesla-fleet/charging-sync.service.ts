@@ -181,8 +181,10 @@ export class ChargingSyncService {
         }
         const histStart = new Date(h.chargeStartDateTime).getTime();
         const ourStart = new Date(session.startTime).getTime();
-        // Within 30 minute window (our polling might have been 15 min late)
-        return Math.abs(histStart - ourStart) < 30 * 60 * 1000;
+        // 90-min window: REST polling gaps can delay our first charging detection
+        // by 15–40 min (EU cars sleep between polls). Wide tolerance ensures we
+        // still correct the startTime even when backfill ran late or was missed.
+        return Math.abs(histStart - ourStart) < 90 * 60 * 1000;
       });
 
       if (!match) { span.end(); return; }
@@ -267,8 +269,10 @@ export class ChargingSyncService {
         return;
       }
 
-      // Fetch history with ±15 min buffer around session
-      const startTime = new Date(new Date(row.startTime).getTime() - 15 * 60 * 1000).toISOString();
+      // Fetch history with a 60-min lookback: late-detected sessions (REST polling gap
+      // during sleep can delay first charging signal by 15–40 min) need a wider window
+      // so Tesla's actual start falls within the query range.
+      const startTime = new Date(new Date(row.startTime).getTime() - 60 * 60 * 1000).toISOString();
       const endTime = row.endTime
         ? new Date(new Date(row.endTime).getTime() + 20 * 60 * 1000).toISOString()
         : new Date().toISOString();
@@ -376,10 +380,12 @@ export class ChargingSyncService {
   private findMatchingHistory(history: any[], session: any): any | null {
     const sessionStart = new Date(session.startTime).getTime();
 
-    // Try to match by start time (±10 min tolerance)
+    // Try to match by start time: 30-min tolerance handles sessions where backfill
+    // corrected startTime but a small residual gap remains, and also cases where
+    // backfillSessionStart was not called (poll-cron path vs real-time path).
     const byTime = history.find((h: any) => {
       const histStart = new Date(h.chargeStartDateTime).getTime();
-      return Math.abs(histStart - sessionStart) < 10 * 60 * 1000;
+      return Math.abs(histStart - sessionStart) < 30 * 60 * 1000;
     });
     if (byTime) return byTime;
 

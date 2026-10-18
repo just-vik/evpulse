@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { TripPostProcessorService } from './trip-post-processor.service';
 import { TripDetectorService } from './trip-detector.service';
@@ -198,7 +199,13 @@ export class TripCleanupService {
           LIMIT 1
         `;
         const endPoint = lastMoving[0] ?? sourcePoint;
-        const endTime  = endPoint?.ts ?? new Date();
+        const rawEndTime = endPoint?.ts ?? new Date();
+        // Guard against zero-duration: if the only telemetry we found is at or before
+        // trip.startTime (detector created the trip and the car went silent immediately),
+        // use startTime + 60 s so the phantom-trip cleanup can find and delete it.
+        const endTime = rawEndTime > trip.startTime
+          ? rawEndTime
+          : new Date(trip.startTime.getTime() + 60_000);
         const watchdogTag = sourcePoint ? 'force_closed_stale_watchdog' : 'force_closed_stale_watchdog_no_point';
         const repairTags  = appendRepairTag((trip as any).repairTags, watchdogTag, 'watchdog');
         await this.prisma.trip.update({
@@ -399,11 +406,31 @@ export class TripCleanupService {
       select: { id: true, distanceKm: true, startSoc: true, endSoc: true, startTime: true, endTime: true },
     });
 
-    const toDelete: string[] = [];
+    // Also find zero-duration trips (endTime ≤ startTime + 90 s): these are produced by the
+    // stale-trip watchdog when it force-closes a trip that has no moving telemetry points.
+    // They have no valid distance/energy and should be removed.
+    const zeroDuration = await this.prisma.$queryRaw<Array<{ id: string }>>(
+      vehicleId
+        ? Prisma.sql`
+            SELECT id FROM trips
+            WHERE "endTime" IS NOT NULL
+              AND "startTime" < ${fiveMinutesAgo}
+              AND "vehicleId" = ${vehicleId}
+              AND EXTRACT(EPOCH FROM ("endTime" - "startTime")) <= 90`
+        : Prisma.sql`
+            SELECT id FROM trips
+            WHERE "endTime" IS NOT NULL
+              AND "startTime" < ${fiveMinutesAgo}
+              AND EXTRACT(EPOCH FROM ("endTime" - "startTime")) <= 90`,
+    );
+
+    const toDelete = new Set<string>(zeroDuration.map(r => r.id));
 
     for (const trip of candidates) {
+      if (toDelete.has(trip.id)) continue;
+
       if ((trip.distanceKm ?? 0) < 0.3) {
-        toDelete.push(trip.id);
+        toDelete.add(trip.id);
         continue;
       }
 
@@ -411,7 +438,7 @@ export class TripCleanupService {
         ? trip.endTime.getTime() - trip.startTime.getTime()
         : null;
       if (durationMs !== null && durationMs < 60_000) {
-        toDelete.push(trip.id);
+        toDelete.add(trip.id);
         continue;
       }
 
@@ -421,16 +448,17 @@ export class TripCleanupService {
         trip.endSoc - trip.startSoc >= 5 &&
         (trip.distanceKm ?? 0) < 2.0
       ) {
-        toDelete.push(trip.id);
+        toDelete.add(trip.id);
       }
     }
 
-    if (!toDelete.length) return { deleted: 0 };
+    if (!toDelete.size) return { deleted: 0 };
 
-    await this.prisma.tripPoint.deleteMany({ where: { tripId: { in: toDelete } } });
-    await this.prisma.trip.deleteMany({ where: { id: { in: toDelete } } });
+    const ids = [...toDelete];
+    await this.prisma.tripPoint.deleteMany({ where: { tripId: { in: ids } } });
+    await this.prisma.trip.deleteMany({ where: { id: { in: ids } } });
 
-    return { deleted: toDelete.length };
+    return { deleted: toDelete.size };
   }
 
   /**

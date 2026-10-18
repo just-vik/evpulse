@@ -199,7 +199,12 @@ export class ChargingDetectorService {
 
     // ── Integrate energy over elapsed time ────────────────────────────────
     const dtHours = (now.getTime() - prev.lastTime.getTime()) / 3_600_000;
-    const deltaKwh = prev.isCharging && dtHours > 0 && dtHours < 0.1 // cap at 6 min gap
+    // Cap raised to 15 min (0.25 h): EU cars lack ChargeEnergyAdded via Fleet Telemetry,
+    // so energy must be reconstructed from power × dt. REST polling for sleeping/charging
+    // cars arrives every 8–12 min, causing every interval > 6 min to contribute 0 kWh.
+    // 15 min is safe for home AC (≤11 kW × 0.25 h = 2.75 kWh max per step); SC sessions
+    // have Fleet Telemetry at ~10 s intervals so dtHours never approaches this cap.
+    const deltaKwh = prev.isCharging && dtHours > 0 && dtHours < 0.25 // cap at 15 min gap
       ? prev.lastPowerKw * dtHours : 0;
     const sessionEnergy = prev.energyKwh + deltaKwh;
 
@@ -501,7 +506,22 @@ export class ChargingDetectorService {
     const maxPower = powers.length ? Math.max(...powers) : null;
 
     const endSoc = data.soc ?? null;
-    const roundedEnergy = Math.round(energyKwh * 1000) / 1000;
+
+    // SOC-delta fallback for EU cars without ChargeEnergyAdded in Fleet Telemetry.
+    // When the power integral is used as the energy source, any REST poll gap > the
+    // integration cap (now 15 min) still contributes 0 kWh. For long AC sessions with
+    // intermittent polling, the integral can be 30–50% low. Use SOC × usable capacity
+    // with a 7% charger-side loss factor when the SOC-based estimate is ≥30% higher.
+    const detectedCap = vehicle?.batteryCapacityDetected ?? vehicle?.batteryCapacityUsable ?? 72;
+    const socGain = endSoc != null && endSoc > session.startSoc ? endSoc - session.startSoc : null;
+    const socDeltaKwh = socGain != null && socGain >= 1
+      ? (socGain / 100) * detectedCap * 1.07  // 7% accounts for AC charger-side losses
+      : null;
+    const correctedEnergy = socDeltaKwh != null && socDeltaKwh > energyKwh * 1.3
+      ? socDeltaKwh
+      : energyKwh;
+
+    const roundedEnergy = Math.round(correctedEnergy * 1000) / 1000;
 
     // ── Ghost session guard ──────────────────────────────────────────────────
     // Discard false-positive sessions: regen spikes, BMS flickers, stale
@@ -534,7 +554,6 @@ export class ChargingDetectorService {
     //   AC home 0.90–0.96, DC fast 0.85–0.93 (higher peak power = more loss).
     let chargingEfficiency: number | null = null;
     const deltaSoc = endSoc != null ? endSoc - session.startSoc : null;
-    const detectedCap = vehicle?.batteryCapacityDetected ?? vehicle?.batteryCapacityUsable ?? 72;
     if (deltaSoc != null && deltaSoc >= 2 && roundedEnergy > 0 && detectedCap > 0) {
       const expectedKwh = (deltaSoc / 100) * detectedCap;
       const raw = roundedEnergy / expectedKwh;
