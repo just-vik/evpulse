@@ -1410,13 +1410,41 @@ export class TripDetectorService {
     // for the two accepted divergences from the pre-migration literal logic:
     // settings.chargingCost is no longer a fallback, and the hardcoded 0.25
     // default is now the shared canonicalDefaultRate (0.35).
+    //
+    // IMPORTANT: cost resolution must never block trip finalization.
+    // A transient DB error in resolveVehicleSettings() would previously throw
+    // here and leave the trip open (endTime: null) for the idempotency-key TTL
+    // (~10 min), then close it without costTotal via finalizeTripFromDb.
+    // TripPostProcessorService does NOT currently recalculate trip costTotal,
+    // so costTotal = null has no automatic recovery. To repair affected trips,
+    // implement a cost-backfill pass or call a dedicated endpoint.
     let costTotal: number | null = null;
     if (energyUsedKwh != null) {
       if (!this.tariffResolver) {
-        throw new Error(`TripDetectorService: TariffResolverService not available (trip ${tripId})`);
+        // tariffResolver is always injected by TripsModule in production (registered
+        // without @Optional() so NestJS crashes at startup if it is absent).
+        // This branch is only reachable in unit tests that construct the service
+        // directly without full DI. Log and continue — trip must close regardless.
+        this.logger.warn(
+          `[Trip] TariffResolverService not injected for ${tripId} — ` +
+          `costTotal will be null. No automatic recovery: implement a ` +
+          `cost-backfill stage in TripPostProcessorService to repair affected trips.`,
+        );
+      } else {
+        try {
+          const resolution = await this.tariffResolver.resolve({ purpose: 'actual_cost', vehicleId });
+          costTotal = Math.round(energyUsedKwh * resolution.rate * 100) / 100;
+        } catch (e: any) {
+          // A transient error (e.g. DB timeout in resolveVehicleSettings) must not
+          // prevent the trip from closing. The trip is written with costTotal = null.
+          // No automatic recovery exists — TripPostProcessorService does not
+          // recalculate trip cost. Manual repair or a future backfill pass is needed.
+          this.logger.warn(
+            `[Trip] Tariff resolution failed for ${tripId}: ${e.message} — ` +
+            `costTotal will be null. No automatic recovery exists.`,
+          );
+        }
       }
-      const resolution = await this.tariffResolver.resolve({ purpose: 'actual_cost', vehicleId });
-      costTotal = Math.round(energyUsedKwh * resolution.rate * 100) / 100;
     }
 
     // P1 phase-1 draft: schedule delayed reconciliation (2–10 min) for post-processor pass
