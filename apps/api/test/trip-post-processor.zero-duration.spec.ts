@@ -70,8 +70,10 @@ function buildPrisma(opts: {
   nextTrip?:        any;
   sparseResults?:   any[];   // returned by the take-5 sparse search
   chargeSession?:   any;
+  captureAll?:      Record<string, any>;  // when provided, captures every written field
 }) {
   const captured: { endTime?: Date; repairReason?: string } = {};
+  const captureAll = opts.captureAll;
 
   const tripPoints    = opts.tripPoints   ?? [];
   const sparseResults = opts.sparseResults ?? [];
@@ -84,6 +86,7 @@ function buildPrisma(opts: {
         update:     jest.fn().mockImplementation(({ data }: any) => {
           if (data.endTime      !== undefined) captured.endTime      = data.endTime;
           if (data.repairReason !== undefined) captured.repairReason = data.repairReason;
+          if (captureAll) Object.assign(captureAll, data);
           return Promise.resolve({});
         }),
       },
@@ -324,5 +327,85 @@ describe('TripPostProcessorService — zero-duration boundary recovery', () => {
     const reason: string = captured.repairReason ?? '';
     const tagCount = (reason.match(/end_time_recovered_sparse_rest_poll/g) ?? []).length;
     expect(tagCount).toBeLessThanOrEqual(1);
+  });
+
+  // ── Strict idempotency ─────────────────────────────────────────────────────
+
+  /**
+   * Two-pass test: Run 1 operates on a zero-duration trip; Run 2 operates on the
+   * same trip after Run 1's write-back (endTime and distanceKm now set).
+   *
+   * Verifies:
+   *   • endTime is NOT rewritten on Run 2 (delta < 1 s threshold at line 1098)
+   *   • distanceKm produced by Run 2 equals Run 1's value (same GPS haversine)
+   *   • qualityScore is stable
+   *
+   * GPS points: three fixes ~0.7–0.8 km apart, 15-min intervals.
+   * dtMs = 900 000 ms > 180 000 ms threshold → GPS-jump filter does not fire.
+   * All three points pass removeOutliers and enter validPoints.
+   */
+  it('strict idempotency: endTime and distanceKm stable across two processTrip runs', async () => {
+    const pt1Ts    = new Date(START.getTime() + 15 * 60_000);
+    const pt2Ts    = new Date(START.getTime() + 30 * 60_000);
+    const lastPtTs = new Date(START.getTime() + 45 * 60_000);
+
+    // Three GPS points with clear movement; startLat/Lon comes from makeTrip()
+    const tripPts = [
+      { timestamp: pt1Ts,    speed: 80, latitude: 52.056, longitude: 4.505, soc: 76, interpolated: false },
+      { timestamp: pt2Ts,    speed: 75, latitude: 52.062, longitude: 4.512, soc: 75, interpolated: false },
+      { timestamp: lastPtTs, speed: 0,  latitude: 52.068, longitude: 4.520, soc: 74, interpolated: false },
+    ];
+
+    // ── Run 1 ─────────────────────────────────────────────────────────────────
+    const run1All: Record<string, any> = {};
+    const { prisma: prisma1 } = buildPrisma({
+      trip:       makeTrip(),   // endTime = startTime
+      tripPoints: tripPts,
+      captureAll: run1All,
+    });
+    await new TripPostProcessorService(prisma1).processTripById('trip-zd-1');
+
+    // Bug A must fire
+    expect(run1All.endTime).toEqual(lastPtTs);
+    // GPS haversine across 3 valid points must yield a non-null distance
+    expect(run1All.distanceKm).not.toBeNull();
+    expect(typeof run1All.distanceKm).toBe('number');
+
+    // ── Run 2: same trip but with first-run values already written ─────────────
+    const run2All: Record<string, any> = {};
+    const { prisma: prisma2 } = buildPrisma({
+      trip: makeTrip({
+        endTime:      run1All.endTime,       // now correct (≠ startTime)
+        distanceKm:   run1All.distanceKm,    // set from Run 1
+        energyUsedKwh: run1All.energyUsedKwh ?? null,
+        endSoc:        run1All.endSoc        ?? null,
+        reliability:   run1All.reliability   ?? null,
+        qualityScore:  run1All.qualityScore  ?? null,
+        repairReason:  run1All.repairReason  ?? 'force_closed_stale_watchdog',
+      }),
+      tripPoints: tripPts,   // same underlying data
+      captureAll: run2All,
+    });
+    await new TripPostProcessorService(prisma2).processTripById('trip-zd-1');
+
+    // endTime: must NOT be rewritten (delta < 1 s) — isZeroDuration is false,
+    // block does not fire, tripEndTime ≈ lastPtTs with < 1 s drift from tail scan.
+    if (run2All.endTime !== undefined) {
+      expect(
+        Math.abs((run2All.endTime as Date).getTime() - lastPtTs.getTime()),
+      ).toBeLessThan(1000);
+    }
+
+    // distanceKm: same GPS haversine → same computed value; threshold check
+    // |new - old| / old = 0 / 2.3x < 0.05 → not updated, but write-back still
+    // passes the existing trip value through. Both must be equal.
+    expect(run2All.distanceKm).toBeCloseTo(run1All.distanceKm as number, 1);
+
+    // qualityScore must be the same integer
+    expect(run2All.qualityScore).toBe(run1All.qualityScore);
+
+    // zero-duration recovery tags must NOT appear in Run 2 (isZeroDuration=false)
+    expect(run2All.repairReason ?? '').not.toContain('end_time_recovered_from_trip_points');
+    expect(run2All.repairReason ?? '').not.toContain('end_time_recovered_sparse_rest_poll');
   });
 });
