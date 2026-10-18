@@ -109,4 +109,54 @@ describeWithRedis('realtime transport: worker emit → api Socket.IO → browser
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(got).toEqual([{ data: { state: 'parked' } }]);
   });
+
+  // ── Reconnect acceptance ────────────────────────────────────────────────────
+  //
+  // Verifies that after a disconnect + reconnect the client can re-subscribe
+  // and receives events without duplication. This covers the WebSocket
+  // "production acceptance" reconnect criterion.
+  //
+  // Socket.IO does NOT auto-restore room memberships on reconnect
+  // (rooms are in-memory state per socket). The client must re-subscribe,
+  // which is the pattern the frontend uses. This test confirms:
+  //   1. After disconnect + reconnect the new socket can subscribe again.
+  //   2. The event delivered to the re-joined room is received exactly once
+  //      (no stale handlers from the previous connection).
+  it('reconnect: re-subscribing after disconnect receives events with no duplication', async () => {
+    const client = await joinedClient('veh-reconnect');
+    const firstConnectGot: unknown[] = [];
+    client.on('trip:ended', (p) => firstConnectGot.push(p));
+
+    // Disconnect and wait for the socket to go offline
+    await new Promise<void>((resolve) => {
+      client.once('disconnect', () => resolve());
+      client.disconnect();
+    });
+
+    // Re-connect and re-subscribe on the same socket
+    const resubscribed = new Promise<void>((resolve) => {
+      client.once('connect', () => {
+        client.emit('subscribe', 'veh-reconnect', () => resolve());
+      });
+    });
+    client.connect();
+    await resubscribed;
+
+    // Register handler only AFTER reconnect — one handler, one room
+    const afterReconnectGot: unknown[] = [];
+    client.on('trip:ended', (p) => afterReconnectGot.push(p));
+
+    new Emitter(workerRedis).of('/telemetry').to('vehicle:veh-reconnect').emit('trip:ended', {
+      vehicleId: 'veh-reconnect',
+      trip: { id: 'trip-reconnect' },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // First-connection handler must have received nothing after disconnect
+    expect(firstConnectGot).toEqual([]);
+    // Post-reconnect handler receives exactly one event
+    expect(afterReconnectGot).toHaveLength(1);
+    expect(afterReconnectGot[0]).toEqual({ vehicleId: 'veh-reconnect', trip: { id: 'trip-reconnect' } });
+  });
 });

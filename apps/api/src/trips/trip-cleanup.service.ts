@@ -498,8 +498,13 @@ export class TripCleanupService {
     if (!toDelete.size) return { deleted: 0 };
 
     const ids = [...toDelete];
-    await this.prisma.tripPoint.deleteMany({ where: { tripId: { in: ids } } });
-    await this.prisma.trip.deleteMany({ where: { id: { in: ids } } });
+    // Atomic: both deletes succeed or both are rolled back.
+    // tripPoint must go first — the FK on tripPoint.tripId references trip.id,
+    // so deleting the parent trip first would violate the constraint.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.tripPoint.deleteMany({ where: { tripId: { in: ids } } });
+      await tx.trip.deleteMany({ where: { id: { in: ids } } });
+    });
 
     return { deleted: toDelete.size };
   }
