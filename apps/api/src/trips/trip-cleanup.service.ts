@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -7,6 +7,8 @@ import { TripDetectorService } from './trip-detector.service';
 import { TripReconcilerService } from './trip-reconciler.service';
 import { isWorkerRole } from '../runtime/runtime-role';
 import { appendRepairTag } from './repair-tag.utils';
+import { TelemetryGateway } from '../websockets/telemetry.gateway';
+import { EventStoreService } from '../events/event-store.service';
 
 /**
  * TripCleanupService
@@ -27,6 +29,8 @@ export class TripCleanupService {
     private readonly prisma: PrismaService,
     private readonly postProcessor: TripPostProcessorService,
     private readonly tripReconciler: TripReconcilerService,
+    @Optional() private readonly telemetryGateway?: TelemetryGateway,
+    @Optional() private readonly eventStore?: EventStoreService,
   ) {}
 
   @Cron('0 */6 * * *')
@@ -229,6 +233,30 @@ export class TripCleanupService {
           `[Watchdog] Force-closed stale trip ${trip.id} (vehicle ${trip.vehicleId}) ` +
           `started ${trip.startTime.toISOString()}, endTime=${endTime.toISOString()}`,
         );
+
+        // Publish trip:ended so realtime clients can finalise their UI immediately.
+        // Emitted after successful DB write — a failed update never reaches here.
+        const endSocValue = (sourcePoint?.soc ?? endPoint?.soc) ?? null;
+        const durationMin = Math.round((endTime.getTime() - trip.startTime.getTime()) / 60_000);
+        this.telemetryGateway?.emitTripEnded(trip.vehicleId, {
+          id: trip.id, vehicleId: trip.vehicleId,
+          startTime:  trip.startTime,
+          endTime,
+          startSoc:   (trip as any).startSoc ?? 0,
+          endSoc:     endSocValue,
+          distanceKm: isPhantom ? 0 : null,
+          repairReason: watchdogTag,
+        });
+        this.eventStore?.emitTripEnded(trip.vehicleId, {
+          tripId:     trip.id,
+          startTime:  trip.startTime.toISOString(),
+          endTime:    endTime.toISOString(),
+          startSoc:   (trip as any).startSoc ?? 0,
+          endSoc:     endSocValue,
+          distanceKm: isPhantom ? 0 : null,
+          durationMin,
+          repairReason: watchdogTag,
+        });
         closed++;
       }
     }

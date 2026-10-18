@@ -1,8 +1,10 @@
-import { Injectable, Logger, Inject } from '@nestjs/common';
+import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../infra/redis.provider';
 import { PrismaService } from '../prisma/prisma.service';
 import { appendRepairTag } from '../trips/repair-tag.utils';
+import { TelemetryGateway } from '../websockets/telemetry.gateway';
+import { EventStoreService } from '../events/event-store.service';
 
 /**
  * High-level vehicle state derived from raw telemetry.
@@ -72,6 +74,8 @@ export class TelemetryEventEngine {
   constructor(
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly prisma: PrismaService,
+    @Optional() private readonly telemetryGateway?: TelemetryGateway,
+    @Optional() private readonly eventStore?: EventStoreService,
   ) {}
 
   // ── Public API ────────────────────────────────────────────────────────────
@@ -293,6 +297,30 @@ export class TelemetryEventEngine {
       `[StateEngine] Force-closed trip ${open.id} for ${vehicleId} ` +
       `(DRIVING→CHARGING transition at ${at.toISOString()})`,
     );
+
+    // Publish trip:ended so realtime clients can finalise their UI immediately.
+    // Emitted after successful DB write — a failed update never reaches here.
+    const durationMin = Math.round((at.getTime() - open.startTime.getTime()) / 60_000);
+    this.telemetryGateway?.emitTripEnded(vehicleId, {
+      id:         open.id,
+      vehicleId,
+      startTime:  open.startTime,
+      endTime:    at,
+      startSoc:   (open as any).startSoc ?? 0,
+      endSoc:     soc,
+      distanceKm: null,
+      repairReason: 'force_closed_charging_transition',
+    });
+    this.eventStore?.emitTripEnded(vehicleId, {
+      tripId:     open.id,
+      startTime:  open.startTime.toISOString(),
+      endTime:    at.toISOString(),
+      startSoc:   (open as any).startSoc ?? 0,
+      endSoc:     soc,
+      distanceKm: null,
+      durationMin,
+      repairReason: 'force_closed_charging_transition',
+    });
   }
 
   /**
