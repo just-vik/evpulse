@@ -197,10 +197,19 @@ export class TripGapRecoveryService {
       let costTotal: number | null = null;
       if (energyUsedKwh != null) {
         if (!this.tariffResolver) {
-          throw new Error(`TripGapRecoveryService: TariffResolverService not available (vehicle ${a.vehicleId})`);
+          this.logger.warn(
+            `[GapRecovery] TariffResolverService not injected for ${a.vehicleId} — costTotal will be null`,
+          );
+        } else {
+          try {
+            const resolution = await this.tariffResolver.resolve({ purpose: 'actual_cost', vehicleId: a.vehicleId });
+            costTotal = Math.round(energyUsedKwh * resolution.rate * 100) / 100;
+          } catch (e: any) {
+            this.logger.warn(
+              `[GapRecovery] Tariff resolution failed for vehicle ${a.vehicleId} during gap recovery: ${e.message} — costTotal will be null`,
+            );
+          }
         }
-        const resolution = await this.tariffResolver.resolve({ purpose: 'actual_cost', vehicleId: a.vehicleId });
-        costTotal = Math.round(energyUsedKwh * resolution.rate * 100) / 100;
       }
 
       // Create recovered trip
