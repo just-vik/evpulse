@@ -203,15 +203,22 @@ export class TripCleanupService {
         // Guard against zero-duration: if the only telemetry we found is at or before
         // trip.startTime (detector created the trip and the car went silent immediately),
         // use startTime + 60 s so the phantom-trip cleanup can find and delete it.
-        const endTime = rawEndTime > trip.startTime
-          ? rawEndTime
-          : new Date(trip.startTime.getTime() + 60_000);
+        const isPhantom = !(rawEndTime > trip.startTime);
+        const endTime = isPhantom
+          ? new Date(trip.startTime.getTime() + 60_000)
+          : rawEndTime;
         const watchdogTag = sourcePoint ? 'force_closed_stale_watchdog' : 'force_closed_stale_watchdog_no_point';
         const repairTags  = appendRepairTag((trip as any).repairTags, watchdogTag, 'watchdog');
         await this.prisma.trip.update({
           where: { id: trip.id },
           data: {
             endTime,
+            // Phantom trips (no moving telemetry found) are explicitly marked with
+            // distanceKm = 0 so the zeroDuration cleanup can target them without
+            // ambiguity. Trips with NULL distanceKm (finalize discarded in a
+            // race condition) have potentially real movement and must NOT be
+            // auto-deleted — they land in reconcileAt-based recovery instead.
+            ...(isPhantom ? { distanceKm: 0 } : {}),
             endSoc:       (sourcePoint?.soc ?? endPoint?.soc) ?? null,
             repairReason: watchdogTag,
             repairTags:   repairTags as any,
@@ -407,9 +414,12 @@ export class TripCleanupService {
     });
 
     // Also find zero-duration trips (endTime ≤ startTime + 90 s AND distanceKm < 0.3):
-    // these are produced by the stale-trip watchdog when it force-closes a trip with no
-    // moving telemetry points. The distanceKm guard is required: a real trip of e.g. 80 s
-    // at highway speed can cover > 0.3 km and must not be deleted by time alone.
+    // these are produced by the stale-trip watchdog when it force-closes a phantom trip
+    // with no moving telemetry points (watchdog sets distanceKm = 0 for those).
+    //
+    // distanceKm IS NOT NULL is intentional: trips with NULL distanceKm had their
+    // finalizeTripToDb buffer discarded (race condition) and may represent real movement
+    // — they are flagged via reconcileAt and must NOT be auto-deleted here.
     const zeroDuration = await this.prisma.$queryRaw<Array<{ id: string }>>(
       vehicleId
         ? Prisma.sql`
@@ -418,13 +428,15 @@ export class TripCleanupService {
               AND "startTime" < ${fiveMinutesAgo}
               AND "vehicleId" = ${vehicleId}
               AND EXTRACT(EPOCH FROM ("endTime" - "startTime")) <= 90
-              AND ("distanceKm" IS NULL OR "distanceKm" < 0.3)`
+              AND "distanceKm" IS NOT NULL
+              AND "distanceKm" < 0.3`
         : Prisma.sql`
             SELECT id FROM trips
             WHERE "endTime" IS NOT NULL
               AND "startTime" < ${fiveMinutesAgo}
               AND EXTRACT(EPOCH FROM ("endTime" - "startTime")) <= 90
-              AND ("distanceKm" IS NULL OR "distanceKm" < 0.3)`,
+              AND "distanceKm" IS NOT NULL
+              AND "distanceKm" < 0.3`,
     );
 
     const toDelete = new Set<string>(zeroDuration.map(r => r.id));
