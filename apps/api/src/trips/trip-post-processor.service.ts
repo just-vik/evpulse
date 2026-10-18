@@ -253,6 +253,97 @@ export class TripPostProcessorService {
       },
     });
 
+    // ── Zero-duration boundary recovery ───────────────────────────────────
+    // When endTime === startTime every downstream window collapses to zero
+    // length: the charge/tail normalization blocks find nothing, the telemetry
+    // fallback queries [startTime, startTime], and the odometer end-anchor
+    // only covers startTime + 15 min — all missing the next REST poll at +60 min.
+    // Result: distanceKm stays NULL even though a real trip may have occurred.
+    //
+    //   Bug A — trip_points exist but endTime was never advanced (pre-95aee09
+    //            watchdog behaviour). Recover endTime from the last trip_point.
+    //   Bug B — force_closed_stale_watchdog on a sparse REST-poll trip: no
+    //            trip_points, next telemetry ≥ 60 min away. Extend endTime to
+    //            the first subsequent REST poll with positive movement evidence
+    //            (speed > 0 or GPS displacement > 100 m).
+    //
+    // Placed BEFORE charge/tail normalization so those blocks see the corrected
+    // endTime and apply their own guards (charge trim, tail trim, etc.).
+    // "No evidence" is not "evidence of absence": when no candidate qualifies,
+    // adjustedEndTime is left unchanged, distanceKm stays NULL, and the trip is
+    // retried on the next processUnrated / reconcileAt pass.
+    const isZeroDuration =
+      adjustedEndTime !== null &&
+      trip.startTime  != null &&
+      adjustedEndTime.getTime() === (trip.startTime as Date).getTime();
+
+    if (isZeroDuration) {
+      // Bug A: use the last trip_point timestamp as the real trip end
+      const lastTripPt = points.length > 0
+        ? (points[points.length - 1] as { timestamp: Date })
+        : null;
+
+      if (lastTripPt && lastTripPt.timestamp.getTime() > (trip.startTime as Date).getTime()) {
+        adjustedEndTime = lastTripPt.timestamp;
+        repairReasons.push('end_time_recovered_from_trip_points');
+      } else {
+        // Bug B: no trip_points (or all at startTime) — search forward for a REST poll
+        const SPARSE_SEARCH_MS = 2 * 60 * 60_000;
+        const searchEnd = new Date((trip.startTime as Date).getTime() + SPARSE_SEARCH_MS);
+
+        // Upper bound: stop before the next trip to avoid contaminating this trip's data
+        const nextTripRow = await this.prisma.trip.findFirst({
+          where: {
+            vehicleId: trip.vehicleId as string,
+            startTime: { gt: trip.startTime as Date, lte: searchEnd },
+            id:        { not: trip.id },
+          },
+          orderBy: { startTime: 'asc' },
+          select:  { startTime: true },
+        });
+        const upperBound = nextTripRow
+          ? new Date(Math.min(nextTripRow.startTime.getTime(), searchEnd.getTime()))
+          : searchEnd;
+
+        const candidates = await this.prisma.telemetryPoint.findMany({
+          where: {
+            vehicleId: trip.vehicleId as string,
+            timestamp: { gt: trip.startTime as Date, lte: upperBound },
+          },
+          orderBy: { timestamp: 'asc' },
+          take:    5,
+          select:  { timestamp: true, speed: true, latitude: true, longitude: true, soc: true },
+        });
+
+        if (candidates.length > 0) {
+          const startLat = trip.startLat as number | null;
+          const startLon = trip.startLon as number | null;
+
+          const movingPt = candidates.find((p: any) => {
+            if ((p.speed ?? 0) > 0) return true;
+            if (
+              p.latitude  != null && p.longitude  != null &&
+              startLat    != null && startLon     != null
+            ) {
+              return haversineKm(startLat, startLon, p.latitude as number, p.longitude as number) > 0.1;
+            }
+            return false;
+          });
+
+          if (movingPt) {
+            adjustedEndTime = (movingPt as any).timestamp as Date;
+            if (((movingPt as any).soc ?? 0) > 0) {
+              adjustedEndSoc = (movingPt as any).soc ?? adjustedEndSoc;
+            }
+            repairReasons.push('end_time_recovered_sparse_rest_poll');
+          }
+          // else: candidates exist but none show positive movement.
+          // Leave adjustedEndTime = startTime; distanceKm stays NULL.
+          // The next processUnrated / reconcileAt pass will retry.
+        }
+      }
+    }
+
     // Trip-end normalization (pre-repair):
     // 1) trim trip to charging start when trip accidentally includes charging time;
     // 2) extend trip end when telemetry shows clear movement shortly after endTime.
