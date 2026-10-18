@@ -406,9 +406,10 @@ export class TripCleanupService {
       select: { id: true, distanceKm: true, startSoc: true, endSoc: true, startTime: true, endTime: true },
     });
 
-    // Also find zero-duration trips (endTime ≤ startTime + 90 s): these are produced by the
-    // stale-trip watchdog when it force-closes a trip that has no moving telemetry points.
-    // They have no valid distance/energy and should be removed.
+    // Also find zero-duration trips (endTime ≤ startTime + 90 s AND distanceKm < 0.3):
+    // these are produced by the stale-trip watchdog when it force-closes a trip with no
+    // moving telemetry points. The distanceKm guard is required: a real trip of e.g. 80 s
+    // at highway speed can cover > 0.3 km and must not be deleted by time alone.
     const zeroDuration = await this.prisma.$queryRaw<Array<{ id: string }>>(
       vehicleId
         ? Prisma.sql`
@@ -416,12 +417,14 @@ export class TripCleanupService {
             WHERE "endTime" IS NOT NULL
               AND "startTime" < ${fiveMinutesAgo}
               AND "vehicleId" = ${vehicleId}
-              AND EXTRACT(EPOCH FROM ("endTime" - "startTime")) <= 90`
+              AND EXTRACT(EPOCH FROM ("endTime" - "startTime")) <= 90
+              AND ("distanceKm" IS NULL OR "distanceKm" < 0.3)`
         : Prisma.sql`
             SELECT id FROM trips
             WHERE "endTime" IS NOT NULL
               AND "startTime" < ${fiveMinutesAgo}
-              AND EXTRACT(EPOCH FROM ("endTime" - "startTime")) <= 90`,
+              AND EXTRACT(EPOCH FROM ("endTime" - "startTime")) <= 90
+              AND ("distanceKm" IS NULL OR "distanceKm" < 0.3)`,
     );
 
     const toDelete = new Set<string>(zeroDuration.map(r => r.id));

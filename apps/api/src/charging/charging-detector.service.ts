@@ -522,14 +522,25 @@ export class ChargingDetectorService {
     // integration cap (now 15 min) still contributes 0 kWh. For long AC sessions with
     // intermittent polling, the integral can be 30–50% low. Use SOC × usable capacity
     // with a 7% charger-side loss factor when the SOC-based estimate is ≥30% higher.
+    //
+    // Two activation paths:
+    //   energyKwh > 0 → use SOC estimate only when it is ≥30% higher than the integral
+    //                    (guards against minor rounding/noise divergence)
+    //   energyKwh = 0 → all REST poll gaps exceeded the 15-min cap; SOC is the only
+    //                    signal, but require session ≥ 5 min to filter BMS recalibration
+    //                    events that raise SOC without actual energy transfer
+    const sessionDurationMs = now.getTime() - session.startTime.getTime();
     const detectedCap = vehicle?.batteryCapacityDetected ?? vehicle?.batteryCapacityUsable ?? 72;
     const socGain = endSoc != null && endSoc > session.startSoc ? endSoc - session.startSoc : null;
     const socDeltaKwh = socGain != null && socGain >= 1
       ? (socGain / 100) * detectedCap * 1.07  // 7% accounts for AC charger-side losses
       : null;
-    const correctedEnergy = socDeltaKwh != null && socDeltaKwh > energyKwh * 1.3
-      ? socDeltaKwh
-      : energyKwh;
+    const useSocFallback =
+      socDeltaKwh != null &&
+      (energyKwh > 0
+        ? socDeltaKwh > energyKwh * 1.3                  // integral exists but is ≥30% low
+        : sessionDurationMs >= 5 * 60_000);               // integral = 0; accept only if session ≥ 5 min
+    const correctedEnergy = useSocFallback ? socDeltaKwh! : energyKwh;
 
     const roundedEnergy = Math.round(correctedEnergy * 1000) / 1000;
 
