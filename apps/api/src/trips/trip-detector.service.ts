@@ -1168,8 +1168,10 @@ export class TripDetectorService {
     // Even the fastest production cars peak at ~300 km/h; an average > 300 km/h
     // across the whole trip is impossible and indicates bad GPS or clock data.
     if (impliedAvgKmh > 300) {
-      await this.prisma.tripPoint.deleteMany({ where: { tripId } });
-      await this.prisma.trip.delete({ where: { id: tripId } });
+      await this.prisma.$transaction([
+        this.prisma.tripPoint.deleteMany({ where: { tripId } }),
+        this.prisma.trip.delete({ where: { id: tripId } }),
+      ]);
       await this.redis.del(`trip:id:${vehicleId}`);
       this.logger.warn(
         `[Trip] Deleted impossible trip ${tripId}: ${impliedAvgKmh.toFixed(0)} km/h avg (${distanceKm.toFixed(2)} km / ${Math.round(rollbackDurationMs / 60000)} min)`,
@@ -1181,8 +1183,10 @@ export class TripDetectorService {
     // A Tesla averaging < 5 km/h over a < 2 km "trip" is almost certainly
     // coordinates drifting while the car sits with HVAC on, not real driving.
     if (impliedAvgKmh < 5 && distanceKm < 2) {
-      await this.prisma.tripPoint.deleteMany({ where: { tripId } });
-      await this.prisma.trip.delete({ where: { id: tripId } });
+      await this.prisma.$transaction([
+        this.prisma.tripPoint.deleteMany({ where: { tripId } }),
+        this.prisma.trip.delete({ where: { id: tripId } }),
+      ]);
       await this.redis.del(`trip:id:${vehicleId}`);
       this.logger.warn(
         `[Trip] Deleted GPS-drift trip ${tripId}: ${impliedAvgKmh.toFixed(1)} km/h avg, ${distanceKm.toFixed(2)} km`,
@@ -1198,8 +1202,10 @@ export class TripDetectorService {
     //       too short to be any real errand, regardless of whether the 500 m bar cleared)
     const isFalseStart = distanceKm < 1.0 && rollbackDurationMs < 120_000;
     if (distanceKm < 0.5 || isFalseStart) {
-      await this.prisma.tripPoint.deleteMany({ where: { tripId } });
-      await this.prisma.trip.delete({ where: { id: tripId } });
+      await this.prisma.$transaction([
+        this.prisma.tripPoint.deleteMany({ where: { tripId } }),
+        this.prisma.trip.delete({ where: { id: tripId } }),
+      ]);
       await this.redis.del(`trip:id:${vehicleId}`);
       this.logger.debug(
         `[Trip] Rolled back ${tripId} (dist=${distanceKm.toFixed(2)} km, dur=${Math.round(rollbackDurationMs / 1000)}s, falseStart=${isFalseStart})`,
@@ -1567,8 +1573,10 @@ export class TripDetectorService {
     const recAvgKmh = recDurationHrs > 0 ? distanceKm / recDurationHrs : Infinity;
     const recFalseStart = distanceKm < 1.0 && recDurationMs < 120_000;
     if (recAvgKmh > 300 || (recAvgKmh < 5 && distanceKm < 2) || distanceKm < 0.5 || recFalseStart) {
-      await this.prisma.tripPoint.deleteMany({ where: { tripId } });
-      await this.prisma.trip.delete({ where: { id: tripId } });
+      await this.prisma.$transaction([
+        this.prisma.tripPoint.deleteMany({ where: { tripId } }),
+        this.prisma.trip.delete({ where: { id: tripId } }),
+      ]);
       return;
     }
 
