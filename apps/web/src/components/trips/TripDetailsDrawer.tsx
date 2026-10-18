@@ -2,12 +2,10 @@
 
 import React, { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, MapPin, Battery, Gauge, Zap, Mountain, Wind, Car, Star, AlertTriangle } from 'lucide-react';
+import { X, MapPin, AlertTriangle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import dynamic from 'next/dynamic';
 import { useCurrency } from '@/hooks/useCurrency';
-import { MetricBanknoteIcon } from '@/components/icons/MetricBanknoteIcon';
-
 const TripMapGL = dynamic(() => import('./TripMapGL'), {
   ssr: false,
   loading: () => <div className="h-52 rounded-xl bg-[hsl(var(--secondary)/0.7)] animate-pulse" />,
@@ -71,37 +69,24 @@ export function TripDetailsDrawer({ trip, onClose }: Props) {
     try { return JSON.parse(trip.anomalyFlags); } catch { return []; }
   })();
 
-  const energy   = trip?.energyUsedKwh != null ? Number(trip.energyUsedKwh) : null;
-  const distance = trip?.distanceKm    != null ? Number(trip.distanceKm)    : null;
-  const regen    = trip?.stats?.regenEnergyKwh ?? null;
-  const costPerKm = trip?.costTotal && distance && distance > 0 ? trip.costTotal / distance : null;
+  const energy     = trip?.energyUsedKwh  != null ? Number(trip.energyUsedKwh)  : null;
+  const distance   = trip?.distanceKm     != null ? Number(trip.distanceKm)     : null;
+  const efficiency = trip?.efficiencyWhkm != null ? Number(trip.efficiencyWhkm) : null;
+  const regen      = trip?.stats?.regenEnergyKwh ?? null;
+  const costPerKm  = trip?.costTotal && distance && distance > 0 ? trip.costTotal / distance : null;
 
-  const statItems = trip ? [
-    energy != null && { icon: Zap,      label: t('trips.energy'),       value: `${energy.toFixed(2)} kWh` },
-    regen != null && regen > 0 && { icon: Wind, label: t('trips.regen'), value: `${regen.toFixed(2)} kWh`, cls: 'text-teal-400' },
-    trip.costTotal != null && trip.costTotal > 0 && {
-      icon: MetricBanknoteIcon,
-      label: t('trips.cost'),
-      value: `${formatMoney(trip.costTotal)}${costPerKm ? ` · ${formatPerKm(costPerKm)}` : ''}`,
-    },
-    trip.stats?.avgSpeed != null && { icon: Gauge, label: t('trips.avgSpeedLabel'), value: `${Math.round(trip.stats.avgSpeed)} ${t('trips.kmh')}` },
-    trip.stats?.maxSpeed != null && { icon: Gauge, label: t('trips.maxSpeedLabel', { defaultValue: 'Max speed' }), value: `${Math.round(trip.stats.maxSpeed)} ${t('trips.kmh')}` },
-    trip.stats?.elevationGain != null && trip.stats.elevationGain > 0 && {
-      icon: Mountain, label: t('trips.elevationGain'), value: `↑ ${Math.round(trip.stats.elevationGain)} ${t('trips.meters')}`,
-    },
-    trip.stats?.trafficStopRatio != null && trip.stats.trafficStopRatio > 0 && {
-      icon: Car, label: t('trips.traffic'), value: `${Math.round(trip.stats.trafficStopRatio * 100)}%`,
-    },
-    trip.stats?.drivingStyle && {
-      icon: Star, label: t('trips.styleLabel'),
-      value: trip.stats.drivingStyle === 'eco' ? t('trips.drivingStyle_eco') : trip.stats.drivingStyle === 'normal' ? t('trips.drivingStyle_normal') : t('trips.drivingStyle_aggressive'),
-      cls: trip.stats.drivingStyle === 'eco' ? 'text-green-400' : trip.stats.drivingStyle === 'normal' ? 'text-blue-400' : 'text-red-400',
-    },
-    trip.startSoc != null && trip.endSoc != null && {
-      icon: Battery, label: t('trips.chargeLabel'),
-      value: `${Math.round(trip.startSoc)}% → ${Math.round(trip.endSoc)}%`,
-    },
-  ].filter(Boolean) as { icon: React.ComponentType<{ size?: number; className?: string }>; label: string; value: string; cls?: string }[] : [];
+  const duration = trip
+    ? (() => {
+        if (!trip.endTime) return null;
+        const mins = Math.round((new Date(trip.endTime).getTime() - new Date(trip.startTime).getTime()) / 60000);
+        if (mins < 60) return `${mins} min`;
+        const h = Math.floor(mins / 60), m = mins % 60;
+        return m ? `${h}h ${m}m` : `${h}h`;
+      })()
+    : null;
+
+  const socDelta = trip?.startSoc != null && trip?.endSoc != null
+    ? Math.round(trip.startSoc) - Math.round(trip.endSoc) : null;
 
   return (
     <AnimatePresence>
@@ -152,58 +137,97 @@ export function TripDetailsDrawer({ trip, onClose }: Props) {
             </div>
 
             {/* Scrollable content */}
-            <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 space-y-4">
+            <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 space-y-3">
+              {/* Key metrics panel */}
+              {trip && (() => {
+                const rows = [
+                  duration     && { label: t('trips.duration',   { defaultValue: 'Duration'  }), value: duration },
+                  distance != null && { label: t('trips.distance', { defaultValue: 'Distance'  }), value: `${distance.toFixed(1)} km` },
+                  (trip.startSoc != null && trip.endSoc != null) && {
+                    label: t('trips.chargeLabel'),
+                    value: `${Math.round(trip.startSoc)}% → ${Math.round(trip.endSoc)}%`,
+                    sub: socDelta != null && socDelta > 0 ? `−${socDelta}%` : undefined,
+                    subCls: 'text-muted-foreground',
+                  },
+                  efficiency != null && {
+                    label: t('trips.efficiency', { defaultValue: 'Efficiency' }),
+                    value: `${efficiency.toFixed(0)} Wh/km`,
+                  },
+                ].filter(Boolean) as { label: string; value: string; sub?: string; subCls?: string }[];
+                if (!rows.length) return null;
+                return (
+                  <div className="rounded-xl border border-[hsl(var(--border)/0.5)] bg-[hsl(var(--secondary)/0.3)] divide-y divide-[hsl(var(--border)/0.3)]">
+                    {rows.map(row => (
+                      <div key={row.label} className="flex items-center justify-between px-3 py-2.5">
+                        <span className="text-[11px] text-muted-foreground">{row.label}</span>
+                        <div className="flex items-center gap-2">
+                          {row.sub && <span className={`text-[11px] font-medium ${row.subCls ?? 'text-muted-foreground'}`}>{row.sub}</span>}
+                          <span className="text-[13px] font-semibold text-foreground tabular-nums">{row.value}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
               {/* Map */}
               {trip.polyline && (
                 <TripMapGL
                   polyline={trip.polyline}
                   repairReason={trip.repairReason ?? undefined}
-                  height={220}
+                  height={240}
                 />
               )}
 
-              {/* Stats grid */}
-              {statItems.length > 0 && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {statItems.map(item => {
-                    const Icon = item.icon;
-                    return (
-                      <div key={item.label} className="flex items-start gap-2 p-2.5 rounded-xl bg-[hsl(var(--secondary)/0.45)] border border-[hsl(var(--border)/0.6)]">
-                        <Icon size={13} className="text-muted-foreground mt-0.5 shrink-0" />
-                        <div className="min-w-0">
-                          <p className="text-[10px] text-muted-foreground leading-none mb-0.5">{item.label}</p>
-                          <p className={`text-xs font-semibold truncate ${item.cls ?? 'text-foreground'}`}>{item.value}</p>
-                        </div>
+              {/* Secondary analytics panel */}
+              {trip && (() => {
+                const rows = [
+                  energy != null && { label: t('trips.energy'), value: `${energy.toFixed(2)} kWh` },
+                  (regen != null && regen > 0) && { label: t('trips.regen'), value: `${regen.toFixed(2)} kWh`, cls: 'text-teal-400' },
+                  (trip.costTotal != null && trip.costTotal > 0) && {
+                    label: t('trips.cost'),
+                    value: `${formatMoney(trip.costTotal)}${costPerKm ? ` · ${formatPerKm(costPerKm)}` : ''}`,
+                  },
+                  trip.stats?.avgSpeed != null && { label: t('trips.avgSpeedLabel'), value: `${Math.round(trip.stats.avgSpeed)} ${t('trips.kmh')}` },
+                  trip.stats?.maxSpeed != null && { label: t('trips.maxSpeedLabel', { defaultValue: 'Max speed' }), value: `${Math.round(trip.stats.maxSpeed)} ${t('trips.kmh')}` },
+                  (trip.stats?.elevationGain != null && trip.stats.elevationGain > 0) && {
+                    label: t('trips.elevationGain'), value: `↑ ${Math.round(trip.stats.elevationGain)} ${t('trips.meters')}`,
+                  },
+                  trip.stats?.drivingStyle && {
+                    label: t('trips.styleLabel'),
+                    value: trip.stats.drivingStyle === 'eco' ? t('trips.drivingStyle_eco') : trip.stats.drivingStyle === 'normal' ? t('trips.drivingStyle_normal') : t('trips.drivingStyle_aggressive'),
+                    cls: trip.stats.drivingStyle === 'eco' ? 'text-green-400' : trip.stats.drivingStyle === 'normal' ? 'text-blue-400' : 'text-red-400',
+                  },
+                ].filter(Boolean) as { label: string; value: string; cls?: string }[];
+                if (!rows.length) return null;
+                return (
+                  <div className="rounded-xl border border-[hsl(var(--border)/0.5)] bg-[hsl(var(--secondary)/0.3)] divide-y divide-[hsl(var(--border)/0.3)]">
+                    {rows.map(row => (
+                      <div key={row.label} className="flex items-center justify-between px-3 py-2.5">
+                        <span className="text-[11px] text-muted-foreground">{row.label}</span>
+                        <span className={`text-[12px] font-semibold tabular-nums ${row.cls ?? 'text-foreground'}`}>{row.value}</span>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                    ))}
+                  </div>
+                );
+              })()}
 
-              {/* Quality & anomaly badges */}
-              <div className="flex items-center gap-2 flex-wrap">
-                {trip.qualityScore != null && (
+              {/* Quality badge — only show non-trivial state */}
+              {(trip.reliability && trip.reliability !== 'HIGH') && (
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className={`text-[10px] border px-1.5 py-0.5 rounded-lg font-medium ${
-                    trip.qualityScore >= 80 ? 'bg-green-500/10 border-green-500/30 text-green-400'
-                    : trip.qualityScore >= 50 ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'
-                    : 'bg-red-500/10 border-red-500/30 text-red-400'
-                  }`}>Q:{trip.qualityScore >= 80 ? t('trips.qHigh') : trip.qualityScore >= 50 ? t('trips.qMed') : t('trips.qLow')}</span>
-                )}
-                {trip.reliability && (
-                  <span className={`text-[10px] border px-1.5 py-0.5 rounded-lg font-medium ${
-                    trip.reliability === 'HIGH'   ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                    : trip.reliability === 'MEDIUM' ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'
+                    trip.reliability === 'MEDIUM' ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'
                     : 'bg-red-500/10 border-red-500/30 text-red-400'
                   }`}>
-                    {trip.reliability === 'HIGH' ? '🟢' : trip.reliability === 'MEDIUM' ? '🟡' : '🔴'} {trip.reliability}
+                    {trip.reliability === 'MEDIUM' ? '🟡' : '🔴'} {trip.reliability}
                   </span>
-                )}
-                {anomalies.length > 0 && anomalies.map((a, i) => (
-                  <span key={i} className="flex items-center gap-0.5 text-[10px] border px-1.5 py-0.5 rounded-lg bg-amber-500/10 border-amber-500/30 text-amber-400">
-                    <AlertTriangle size={9} />{a.replace(/_/g, ' ')}
-                  </span>
-                ))}
-              </div>
+                  {anomalies.length > 0 && anomalies.slice(0, 2).map((a, i) => (
+                    <span key={i} className="flex items-center gap-0.5 text-[10px] border px-1.5 py-0.5 rounded-lg bg-amber-500/10 border-amber-500/30 text-amber-400">
+                      <AlertTriangle size={9} />{a.replace(/_/g, ' ')}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </motion.div>
         </>

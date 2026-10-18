@@ -250,42 +250,80 @@ function QDot({ score }: { score: number | null }) {
 
 // ─── Expanded detail section ──────────────────────────────────────────────────
 
-function TripDetails({ trip }: { trip: ApiTrip }) {
+function TripDetails({ trip, avgEffWhkm }: { trip: ApiTrip; avgEffWhkm?: number | null }) {
   const { t } = useTranslation()
   const { formatMoney, formatPerKm } = useCurrency()
-  const regen   = trip.stats?.regenEnergyKwh ?? null
-  const energy  = trip.energyUsedKwh != null ? Number(trip.energyUsedKwh) : null
-  const distance = trip.distanceKm != null ? Number(trip.distanceKm) : null
-  const costPerKm = trip.costTotal && distance && distance > 0 ? (trip.costTotal / distance) : null
+  const regen      = trip.stats?.regenEnergyKwh ?? null
+  const energy     = trip.energyUsedKwh  != null ? Number(trip.energyUsedKwh)  : null
+  const distance   = trip.distanceKm     != null ? Number(trip.distanceKm)     : null
+  const efficiency = trip.efficiencyWhkm != null ? Number(trip.efficiencyWhkm) : null
+  const effPct     = avgEffWhkm && efficiency && efficiency > 0
+    ? Math.round((avgEffWhkm / efficiency) * 100) : null
+  const costPerKm  = trip.costTotal && distance && distance > 0 ? (trip.costTotal / distance) : null
+  const duration   = formatDuration(trip.startTime, trip.endTime, t)
+  const socDelta   = trip.startSoc != null && trip.endSoc != null
+    ? Math.round(trip.startSoc) - Math.round(trip.endSoc) : null
 
-  const statItems = [
-    energy     != null && { icon: BoltIcon,  label: t('trips.energy'),    value: `${energy.toFixed(2)} kWh` },
-    regen != null && regen > 0 && { icon: Wind, label: t('trips.regen'), value: `${regen.toFixed(2)} kWh`, cls: 'text-teal-400' },
-    trip.costTotal != null && trip.costTotal > 0 && {
-      icon: MetricBanknoteIcon,
+  // Top-level key metrics shown as clean rows
+  const summaryRows = [
+    duration     && { label: t('trips.duration',   { defaultValue: 'Duration'  }), value: duration },
+    distance != null && { label: t('trips.distance', { defaultValue: 'Distance'  }), value: `${distance.toFixed(1)} km` },
+    (trip.startSoc != null && trip.endSoc != null) && {
+      label: t('trips.chargeLabel'),
+      value: `${Math.round(trip.startSoc)}% → ${Math.round(trip.endSoc)}%`,
+      sub: socDelta != null && socDelta > 0 ? `−${socDelta}%` : undefined,
+      subCls: 'text-muted-foreground',
+    },
+    efficiency != null && {
+      label: t('trips.efficiency', { defaultValue: 'Efficiency' }),
+      value: `${efficiency.toFixed(0)} Wh/km`,
+      sub: effPct != null ? `${effPct}%` : undefined,
+      subCls: effPct && effPct >= 110 ? 'text-teal-400' : effPct && effPct >= 90 ? 'text-sky-400' : 'text-amber-400',
+    },
+  ].filter(Boolean) as { label: string; value: string; sub?: string; subCls?: string }[]
+
+  // Secondary analytics rows
+  const secondaryRows = [
+    energy != null && { label: t('trips.energy'), value: `${energy.toFixed(2)} kWh` },
+    (regen != null && regen > 0) && { label: t('trips.regen'), value: `${regen.toFixed(2)} kWh`, cls: 'text-teal-400' },
+    (trip.costTotal != null && trip.costTotal > 0) && {
       label: t('trips.cost'),
       value: `${formatMoney(trip.costTotal)}${costPerKm ? ` · ${formatPerKm(costPerKm)}` : ''}`,
     },
-    trip.stats?.avgSpeed != null && { icon: SpeedIcon, label: t('trips.avgSpeedLabel'), value: `${Math.round(trip.stats.avgSpeed)} ${t('trips.kmh')}` },
-    trip.stats?.elevationGain != null && trip.stats.elevationGain > 0 && {
-      icon: Mountain, label: t('trips.elevationGain'), value: `↑ ${Math.round(trip.stats.elevationGain)} ${t('trips.meters')}`,
+    trip.stats?.avgSpeed != null && { label: t('trips.avgSpeedLabel'), value: `${Math.round(trip.stats.avgSpeed)} ${t('trips.kmh')}` },
+    trip.stats?.maxSpeed != null && { label: t('trips.maxSpeedLabel', { defaultValue: 'Max speed' }), value: `${Math.round(trip.stats.maxSpeed)} ${t('trips.kmh')}` },
+    (trip.stats?.elevationGain != null && trip.stats.elevationGain > 0) && {
+      label: t('trips.elevationGain'), value: `↑ ${Math.round(trip.stats.elevationGain)} ${t('trips.meters')}`,
     },
-    trip.stats?.trafficStopRatio != null && trip.stats.trafficStopRatio > 0 && {
-      icon: VehicleIcon, label: t('trips.traffic'), value: `${Math.round(trip.stats.trafficStopRatio * 100)}%`,
+    (trip.stats?.trafficStopRatio != null && trip.stats.trafficStopRatio > 0) && {
+      label: t('trips.traffic'), value: `${Math.round(trip.stats.trafficStopRatio * 100)}%`,
     },
     trip.stats?.drivingStyle && {
-      icon: Star, label: t('trips.styleLabel'),
+      label: t('trips.styleLabel'),
       value: trip.stats.drivingStyle === 'eco' ? t('trips.drivingStyle_eco') : trip.stats.drivingStyle === 'normal' ? t('trips.drivingStyle_normal') : t('trips.drivingStyle_aggressive'),
       cls: trip.stats.drivingStyle === 'eco' ? 'text-green-400' : trip.stats.drivingStyle === 'normal' ? 'text-blue-400' : 'text-red-400',
     },
-    trip.startSoc != null && trip.endSoc != null && {
-      icon: BatteryIcon, label: t('trips.chargeLabel'),
-      value: `${Math.round(trip.startSoc)}% → ${Math.round(trip.endSoc)}%`,
-    },
-  ].filter(Boolean) as { icon: React.ComponentType<{ size?: number; className?: string }>; label: string; value: string; cls?: string }[]
+  ].filter(Boolean) as { label: string; value: string; cls?: string }[]
+
+  const MetricPanel = ({ rows, cls }: { rows: { label: string; value: string; sub?: string; subCls?: string; cls?: string }[]; cls?: string }) => (
+    <div className={`rounded-xl border border-[hsl(var(--border)/0.5)] bg-[hsl(var(--secondary)/0.3)] divide-y divide-[hsl(var(--border)/0.3)] ${cls ?? ''}`}>
+      {rows.map(row => (
+        <div key={row.label} className="flex items-center justify-between px-3 py-2">
+          <span className="text-[11px] text-muted-foreground">{row.label}</span>
+          <div className="flex items-center gap-2">
+            {row.sub && <span className={`text-[11px] font-medium ${row.subCls ?? 'text-muted-foreground'}`}>{row.sub}</span>}
+            <span className={`text-[12px] font-semibold tabular-nums ${row.cls ?? 'text-foreground'}`}>{row.value}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 
   return (
     <div className="mt-3 space-y-3">
+      {/* Key metrics */}
+      {summaryRows.length > 0 && <MetricPanel rows={summaryRows} />}
+
       {/* Map */}
       {trip.polyline && (
         <TripMapGL
@@ -295,23 +333,8 @@ function TripDetails({ trip }: { trip: ApiTrip }) {
         />
       )}
 
-      {/* Stats grid */}
-      {statItems.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-          {statItems.map(item => {
-            const Icon = item.icon
-            return (
-              <div key={item.label} className="flex items-start gap-2 p-2.5 rounded-xl bg-[hsl(var(--secondary)/0.45)] border border-[hsl(var(--border)/0.6)]">
-                <Icon size={13} className="text-muted-foreground mt-0.5 shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-[10px] text-muted-foreground leading-none mb-0.5">{item.label}</p>
-                  <p className={`text-xs font-semibold truncate ${item.cls ?? 'text-foreground'}`}>{item.value}</p>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+      {/* Secondary analytics */}
+      {secondaryRows.length > 0 && <MetricPanel rows={secondaryRows} />}
 
       {/* User-facing trip flags: only auto-close and route-reconstruction warnings */}
       {(() => {
@@ -467,7 +490,7 @@ function TripCard({
             onClick={(e: React.MouseEvent) => e.stopPropagation()}
           >
             <div className="px-4 pb-4 border-t border-[hsl(var(--border)/0.35)] pt-3 space-y-3">
-              <TripDetails trip={trip} />
+              <TripDetails trip={trip} avgEffWhkm={avgEffWhkm} />
 
               {/* Replay panel */}
               <AnimatePresence>
