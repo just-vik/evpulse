@@ -516,7 +516,7 @@ export class TelemetryPipelineService {
             outsideTemp:    (latest as any).outsideTemp     ?? null,
             insideTemp:     (latest as any).insideTemp      ?? null,
             locked:         (latest as any).locked          ?? null,
-          });
+          }, latest.timestamp ?? null);
         } else if (this.gateway) {
           // Still online — only emit changed fields (bandwidth optimization)
           const diff: Record<string, any> = {};
@@ -526,7 +526,7 @@ export class TelemetryPipelineService {
             }
           }
           if (Object.keys(diff).length > 0) {
-            this.gateway.emitTelemetryUpdate(vehicleId, diff);
+            this.gateway.emitTelemetryUpdate(vehicleId, diff, latest.timestamp ?? null);
           }
           // Immediately push state change so frontend status updates without waiting
           // for the next REST poll (15s interval).
@@ -540,7 +540,7 @@ export class TelemetryPipelineService {
         }
       } else if (this.gateway) {
         // First point ever — emit full state
-        this.gateway.emitTelemetryUpdate(vehicleId, nextState);
+        this.gateway.emitTelemetryUpdate(vehicleId, nextState, latest.timestamp ?? null);
       }
     } catch { /* non-fatal */ }
 
