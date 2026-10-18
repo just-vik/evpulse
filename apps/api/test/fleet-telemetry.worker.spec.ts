@@ -15,6 +15,7 @@ describe('FleetTelemetryWorker DLQ escalation', () => {
       {} as any,
       {} as any,
       { get: jest.fn() } as any,
+      {} as any, // apiUsage
     );
 
     await (worker as any).handleBatchFailure(
@@ -50,6 +51,7 @@ describe('FleetTelemetryWorker DLQ escalation', () => {
       {} as any,
       {} as any,
       { get: jest.fn() } as any,
+      {} as any, // apiUsage
     );
 
     await (worker as any).handleBatchFailure(
@@ -75,6 +77,7 @@ describe('FleetTelemetryWorker DLQ escalation', () => {
       prisma,
       {} as any,
       { get: jest.fn().mockReturnValue('localhost') } as any,
+      {} as any, // apiUsage
     );
 
     const first = await (worker as any).resolveVehicleId('5YJSA1E26HF000000');
@@ -96,6 +99,7 @@ describe('FleetTelemetryWorker DLQ escalation', () => {
       prisma,
       {} as any,
       { get: jest.fn().mockReturnValue('localhost') } as any,
+      {} as any, // apiUsage
     );
 
     const result = await (worker as any).resolveVehicleId('1234567890');

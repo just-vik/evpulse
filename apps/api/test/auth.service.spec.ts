@@ -15,6 +15,7 @@ describe('AuthService refresh security', () => {
       } as any,
       { get: jest.fn().mockReturnValue('secret') } as any,
       {} as any,
+      {} as any, // auditLog
     );
 
     await expect(service.refreshTokens('user-2', 'rt')).rejects.toBeInstanceOf(UnauthorizedException);
@@ -33,6 +34,7 @@ describe('AuthService refresh security', () => {
       } as any,
       { get: jest.fn().mockReturnValue('secret') } as any,
       {} as any,
+      {} as any, // auditLog
     );
 
     await expect(service.refreshTokens('user-1', 'rt')).rejects.toBeInstanceOf(UnauthorizedException);

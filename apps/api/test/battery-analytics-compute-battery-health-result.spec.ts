@@ -48,7 +48,7 @@ interface Fixtures {
   chargingSessions: any[];
   trips: any[];
   rangeRows: Array<{ soc: number; rangeKm: number }>;
-  tempPoints: Array<{ batteryTemp: number }>;
+  tempPoints: Array<{ batteryTemp: number; timestamp?: Date }>;
   baselineHighKwh: number | null;
   baselineMediumKwh: number | null;
 }

@@ -38,7 +38,7 @@ describe('Golden scenarios: 403 / sleep / split / charging', () => {
     const teslaOAuth = {
       getValidAccessToken: jest.fn().mockResolvedValue('token'),
     };
-    const svc = new ChargingSyncService(prisma, teslaFleet as any, teslaOAuth as any);
+    const svc = new ChargingSyncService(prisma, teslaFleet as any, teslaOAuth as any, {} as any);
 
     await (svc as any).syncOneSession('sess-1');
 
@@ -55,7 +55,7 @@ describe('Golden scenarios: 403 / sleep / split / charging', () => {
     const teslaOAuth = {
       getValidAccessToken: jest.fn().mockRejectedValue(new Error('vehicle_sleeping')),
     };
-    const svc = new ChargingSyncService(prisma, teslaFleet as any, teslaOAuth as any);
+    const svc = new ChargingSyncService(prisma, teslaFleet as any, teslaOAuth as any, {} as any);
 
     await (svc as any).syncOneSession('sess-1');
 
@@ -93,7 +93,7 @@ describe('Golden scenarios: 403 / sleep / split / charging', () => {
     const teslaOAuth = {
       getValidAccessToken: jest.fn().mockResolvedValue('token'),
     };
-    const svc = new ChargingSyncService(prisma, teslaFleet as any, teslaOAuth as any);
+    const svc = new ChargingSyncService(prisma, teslaFleet as any, teslaOAuth as any, {} as any);
 
     await (svc as any).syncOneSession('sess-1');
 
