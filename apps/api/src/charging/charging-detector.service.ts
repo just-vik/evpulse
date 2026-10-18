@@ -270,6 +270,9 @@ export class ChargingDetectorService {
       if (!powerDipped && !isTerminal) {
         // Normal charging — record point, update energy (write live energy so watchdog has data)
         await this.recordPoint(vehicleId, data, now, sessionEnergy).catch(() => {});
+        // recordPoint resets isCharging→false when no open session found (stale-cache recovery).
+        // Don't overwrite that reset here.
+        if (this.cache.get(vehicleId)?.isCharging === false) return;
         this.cache.set(vehicleId, {
           isCharging: true, powerLowAt: null,
           lastPowerKw: powerKw, lastTime: now, energyKwh: sessionEnergy,
@@ -302,6 +305,7 @@ export class ChargingDetectorService {
         // Sparse REST/MQTT often drops power for minutes while the car keeps charging (TezLab-style continuity).
         if (state === 'Charging' || energyGrowing) {
           await this.recordPoint(vehicleId, data, now, sessionEnergy).catch(() => {});
+          if (this.cache.get(vehicleId)?.isCharging === false) return;
           const holdPower = Math.max(
             powerKw,
             prev.lastPowerKw,
@@ -518,7 +522,27 @@ export class ChargingDetectorService {
       orderBy: { startTime: 'desc' },
       select: { id: true, maxPowerKw: true },
     });
-    if (!session) return;
+    if (!session) {
+      // Cache inconsistency: the watchdog (closeStaleChargingSessions) may have force-closed
+      // the session in DB while the in-memory cache still has isCharging=true. Reset the
+      // cache so the NEXT telemetry point re-enters the SESSION START path rather than
+      // continuing to fall through ACTIVE CHARGING with no open session.
+      const cached = this.cache.get(vehicleId);
+      if (cached?.isCharging) {
+        this.logger.warn(
+          `[Charging] ${vehicleId}: no open session in DB but cache=isCharging ` +
+          `(force-closed by watchdog?) — resetting cache so next point opens a new session`,
+        );
+        this.cache.set(vehicleId, {
+          ...cached,
+          isCharging:         false,
+          powerLowAt:         null,
+          pendingChargingAt:  null,
+          pendingChargingSoc: null,
+        });
+      }
+      return;
+    }
 
     const powerKw = Math.abs(data.power ?? 0);
 
