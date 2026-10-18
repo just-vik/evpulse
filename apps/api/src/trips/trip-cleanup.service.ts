@@ -51,6 +51,10 @@ export class TripCleanupService {
     if (processed > 0) {
       this.logger.log(`Auto-repair: processed ${processed} unrated trips`);
     }
+    const { repaired } = await this.postProcessor.processMissingCost();
+    if (repaired > 0) {
+      this.logger.log(`Auto-repair: backfilled cost for ${repaired} trip(s)`);
+    }
   }
 
   /**

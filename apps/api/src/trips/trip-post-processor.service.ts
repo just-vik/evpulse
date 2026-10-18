@@ -2,6 +2,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MapMatchingService } from '../maps/map-matching.service';
 import { GeocodingService } from '../geocoding/geocoding.service';
+import { TariffResolverService } from '../charging/tariff-resolver.service';
 import { appendRepairTags, RepairTag } from './repair-tag.utils';
 import { validateOsrmGeometry } from './osrm-geometry-validation.util';
 
@@ -46,6 +47,11 @@ export class TripPostProcessorService {
     private readonly prisma: PrismaService,
     @Optional() private readonly mapMatching?: MapMatchingService,
     @Optional() private readonly geocoding?: GeocodingService,
+    // Required in production (TripsModule always registers TariffResolverService alongside
+    // TripPostProcessorService). TypeScript `?` is needed only because optional params precede
+    // this one; the @Optional() NestJS decorator is intentionally absent so NestJS throws at
+    // startup when TariffResolverService is missing from the DI container.
+    private readonly tariffResolver?: TariffResolverService,
   ) {}
 
   // ─── Public API ────────────────────────────────────────────────────────────
@@ -212,6 +218,81 @@ export class TripPostProcessorService {
     });
     if (!trip) return;
     await this.processTrip(trip);
+  }
+
+  /**
+   * Backfill costTotal for trips where it is null but energyUsedKwh is known.
+   *
+   * Sources of null costTotal:
+   *   - Tariff resolution failed transiently during finalizeTripToDb (POT-2 fix)
+   *   - Tariff resolution failed transiently during gap recovery (ARCH-4A fix)
+   *   - Trip was merged by TripReconcilerService (ARCH-4B fix — always nulls cost on merge)
+   *
+   * Rate policy: uses the current configured tariff (VehicleSettings.homeChargingRate or
+   * canonicalDefaultRate). This is an approximation — TariffResolverService has no historical
+   * timestamp path for actual_cost. Trips with costTotal = null receive the best available
+   * rate estimate, not a guaranteed historical cost. Document as an estimate if surfaced to
+   * the user.
+   *
+   * Concurrency safety: uses updateMany with `WHERE costTotal IS NULL` so a concurrent
+   * process that already wrote the cost is never overwritten (CAS-style).
+   *
+   * @param limit  Max trips per run (default 50 — prevents spike during catch-up).
+   */
+  async processMissingCost(vehicleId?: string, limit = 50): Promise<{ repaired: number }> {
+    if (!this.tariffResolver) return { repaired: 0 };
+
+    const trips = await this.prisma.trip.findMany({
+      where: {
+        ...(vehicleId ? { vehicleId } : {}),
+        endTime:       { not: null },
+        costTotal:     null,
+        energyUsedKwh: { not: null, gt: 0 },
+      },
+      orderBy: { endTime: 'desc' },
+      take:    limit,
+      select:  { id: true, vehicleId: true, energyUsedKwh: true },
+    });
+
+    let repaired = 0;
+    for (const trip of trips) {
+      let costTotal: number;
+      try {
+        const resolution = await this.tariffResolver.resolve({
+          purpose:   'actual_cost',
+          vehicleId: trip.vehicleId,
+        });
+        costTotal = Math.round(trip.energyUsedKwh! * resolution.rate * 100) / 100;
+      } catch (e: any) {
+        this.logger.warn(
+          `[PostProcessor] Cost backfill: tariff resolution failed for trip ${trip.id} ` +
+          `(vehicle ${trip.vehicleId}): ${e.message} — will retry on next run`,
+        );
+        continue;
+      }
+      // CAS update: applies only when costTotal is still null.
+      // DB errors are intentionally NOT caught here — they propagate rather than being
+      // silently absorbed by the tariff catch block above.
+      const result = await this.prisma.trip.updateMany({
+        where: { id: trip.id, costTotal: null },
+        data:  { costTotal },
+      });
+      if (result.count === 0) {
+        this.logger.debug(
+          `[PostProcessor] Cost backfill: trip ${trip.id} already has costTotal — skipped`,
+        );
+      } else {
+        repaired++;
+      }
+    }
+
+    if (repaired > 0) {
+      this.logger.log(
+        `[PostProcessor] Cost backfill: repaired ${repaired} trip(s)` +
+        `${vehicleId ? ` for vehicle ${vehicleId}` : ''}`,
+      );
+    }
+    return { repaired };
   }
 
   // ─── Pipeline ──────────────────────────────────────────────────────────────
