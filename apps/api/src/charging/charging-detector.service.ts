@@ -1,5 +1,8 @@
 import { Injectable, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
+import { randomUUID } from 'crypto';
+import type Redis from 'ioredis';
 import { PrismaService } from '../prisma/prisma.service';
+import { REDIS_CLIENT } from '../infra/redis.provider';
 import { BatteryAnalyticsService } from '../battery/battery-analytics.service';
 import { ChargingCostService } from './charging-cost.service';
 import { EnergyAnalyticsService } from '../analytics/energy-analytics.service';
@@ -56,6 +59,7 @@ export class ChargingDetectorService {
     @Optional() @Inject(forwardRef(() => ChargingSyncService)) private readonly chargingSync?: ChargingSyncService,
     @Optional() private readonly eventStore?: EventStoreService,
     @Optional() private readonly geocoding?: GeocodingService,
+    @Optional() @Inject(REDIS_CLIENT) private readonly redis?: Redis,
   ) {}
 
   // ─────────────────────── Public entry point ───────────────────────────────
@@ -407,7 +411,54 @@ export class ChargingDetectorService {
     vehicleId: string,
     data:      { soc?: number; charger_type?: string; power?: number; fast_charger_type?: string | null; fast_charger_brand?: string | null; lat?: number | null; lng?: number | null },
     now:       Date,
-  ) {
+  ): Promise<void> {
+    if (!this.redis) {
+      // In production REDIS_CLIENT is always provided by @Global InfraModule.
+      // @Optional() exists only for tests that construct the service without full DI.
+      // Log a warning so an unexpected production usage is immediately visible.
+      this.logger.warn(
+        `[Charging] Redis not injected for ${vehicleId} — running startSession without lock. ` +
+        `This should only occur in unit tests.`,
+      );
+      await this._startSessionBody(vehicleId, data, now);
+      return;
+    }
+
+    const lockKey   = `lock:charging:session:start:${vehicleId}`;
+    const lockToken = randomUUID();
+
+    // Fail-closed: if Redis is unavailable the set() call throws, which propagates
+    // out of checkChargingState → the pipeline catches it and pushes to DLQ for
+    // replay.  This prevents unsafe concurrent execution across replicas.
+    const acquired = await (this.redis as any).set(
+      lockKey, lockToken, 'PX', SESSION_START_LOCK_TTL_MS, 'NX',
+    ) as string | null;
+
+    if (!acquired) {
+      // Another instance is in the critical section for this vehicle right now.
+      // Skip — it will create the session; the findFirst guard ensures idempotency.
+      this.logger.debug(`[Charging] Session-start lock busy for ${vehicleId} — skipped`);
+      return;
+    }
+
+    try {
+      await this._startSessionBody(vehicleId, data, now);
+    } finally {
+      // Atomic compare-and-delete: release only our own lock so that an expired
+      // TTL followed by another owner acquiring the key does not get deleted.
+      await (this.redis as any)
+        .eval(LUA_CAS_DEL, 1, lockKey, lockToken)
+        .catch((e: Error) => this.logger.debug(
+          `[Charging] Session-start lock release failed for ${vehicleId}: ${e.message}`,
+        ));
+    }
+  }
+
+  private async _startSessionBody(
+    vehicleId: string,
+    data:      { soc?: number; charger_type?: string; power?: number; fast_charger_type?: string | null; fast_charger_brand?: string | null; lat?: number | null; lng?: number | null },
+    now:       Date,
+  ): Promise<void> {
     // Hard guard against duplicate starts from parallel pipelines/processes.
     // If an open session already exists, do not create another one.
     const existing = await this.prisma.chargingSession.findFirst({
@@ -825,6 +876,28 @@ export class ChargingDetectorService {
     return { updated, skipped };
   }
 }
+
+// ── Module-level constants ─────────────────────────────────────────────────
+
+/**
+ * TTL for the per-vehicle session-start lock.
+ * Critical section: findFirst (~30ms) + detectChargerType (~100ms) + create (~30ms).
+ * Worst-case at 5× DB-latency spike: ~800ms. 5 000 ms is a 6× safety margin.
+ */
+const SESSION_START_LOCK_TTL_MS = 5_000;
+
+/**
+ * Atomic compare-and-delete Lua script.
+ * Only deletes the key when its value matches the caller's token, preventing
+ * a process whose TTL expired from deleting a new owner's lock.
+ */
+const LUA_CAS_DEL = [
+  "if redis.call('get', KEYS[1]) == ARGV[1] then",
+  "  return redis.call('del', KEYS[1])",
+  "else",
+  "  return 0",
+  "end",
+].join('\n');
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
