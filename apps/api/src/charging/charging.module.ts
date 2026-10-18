@@ -6,6 +6,7 @@ import { VehiclesModule } from '../vehicles/vehicles.module';
 import { BatteryModule } from '../battery/battery.module';
 import { RedisModule } from '../redis/redis.module';
 import { TeslaFleetModule } from '../tesla-fleet/tesla-fleet.module';
+import { GeocodingModule } from '../geocoding/geocoding.module';
 import { EnergyAnalyticsService } from '../analytics/energy-analytics.service';
 import { ChargingDetectorService } from './charging-detector.service';
 import { ChargingCostService } from './charging-cost.service';
@@ -22,6 +23,7 @@ import { TariffResolverService, TARIFF_RESOLVER_CONFIG, TariffResolverConfig } f
     BatteryModule,
     RedisModule,
     EventsModule,
+    GeocodingModule,
     forwardRef(() => TeslaFleetModule),
   ],
   controllers: [ChargingController],

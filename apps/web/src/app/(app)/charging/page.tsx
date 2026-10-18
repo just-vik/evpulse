@@ -22,6 +22,7 @@ import {
   TrendingDown,
   BatteryCharging,
   ChevronDown,
+  MapPin,
 } from 'lucide-react';
 import Link from 'next/link';
 import { StatusBadge } from '@/shared/ui/StatusBadge';
@@ -57,6 +58,9 @@ interface ApiSession {
   energyAddedKwh: number | null;
   maxPowerKw: number | null;
   chargerType: string | null;
+  location: string | null;
+  startLat: number | null;
+  startLng: number | null;
   costTotal: number | null;
   costPerKwh: number | null;
   costSource: string | null;
@@ -686,6 +690,9 @@ export default function ChargingPage() {
           energyAddedKwh: null,
           maxPowerKw: null,
           chargerType: syntheticAnchorSession?.chargerType ?? null,
+          location: syntheticAnchorSession?.location ?? null,
+          startLat: syntheticAnchorSession?.startLat ?? null,
+          startLng: syntheticAnchorSession?.startLng ?? null,
           costTotal: null,
           costPerKwh: null,
           costSource: null,
@@ -1049,7 +1056,7 @@ export default function ChargingPage() {
                   className="hover:bg-[hsl(var(--secondary)/0.15)] transition-colors px-5 py-4"
                 >
                   {/* ── Header: icon + time + type badge + peak ── */}
-                  <div className="flex items-center justify-between gap-2 mb-2.5">
+                  <div className="flex items-center justify-between gap-2 mb-1">
                     <div className="flex items-center gap-2 min-w-0">
                       {session.endTime ? (
                         <CheckCircle size={14} className="text-emerald-400 shrink-0" />
@@ -1074,6 +1081,14 @@ export default function ChargingPage() {
                       )}
                     </div>
                   </div>
+
+                  {/* ── Location ── */}
+                  {session.location && (
+                    <div className="flex items-center gap-1 mb-2">
+                      <MapPin size={10} className="text-muted-foreground shrink-0" />
+                      <span className="text-[11px] text-muted-foreground truncate">{session.location}</span>
+                    </div>
+                  )}
 
                   {/* ── Stats: 2-col on mobile, 4-col on sm+ ── */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-2.5">

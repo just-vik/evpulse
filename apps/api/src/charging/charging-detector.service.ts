@@ -5,6 +5,7 @@ import { ChargingCostService } from './charging-cost.service';
 import { EnergyAnalyticsService } from '../analytics/energy-analytics.service';
 import { ChargingSyncService } from '../tesla-fleet/charging-sync.service';
 import { EventStoreService } from '../events/event-store.service';
+import { GeocodingService } from '../geocoding/geocoding.service';
 
 /**
  * ChargingDetectorService — State-machine charging detection
@@ -54,6 +55,7 @@ export class ChargingDetectorService {
     @Optional() private readonly energyAnalytics?: EnergyAnalyticsService,
     @Optional() @Inject(forwardRef(() => ChargingSyncService)) private readonly chargingSync?: ChargingSyncService,
     @Optional() private readonly eventStore?: EventStoreService,
+    @Optional() private readonly geocoding?: GeocodingService,
   ) {}
 
   // ─────────────────────── Public entry point ───────────────────────────────
@@ -428,6 +430,21 @@ export class ChargingDetectorService {
         startLng:    data.lng  ?? null,
       } as any,
     });
+
+    // Reverse geocode the start position and store as human-readable location.
+    // Fire-and-forget — don't block session creation on network latency.
+    if (data.lat != null && data.lng != null && this.geocoding) {
+      this.geocoding.reverseShort(data.lat, data.lng)
+        .then((loc) => {
+          if (loc) {
+            return this.prisma.chargingSession.update({
+              where: { id: session.id },
+              data:  { location: loc } as any,
+            });
+          }
+        })
+        .catch((e: any) => this.logger.warn(`Geocode for session ${session.id} failed: ${e.message}`));
+    }
 
     this.eventStore?.emitChargingStarted(vehicleId, {
       sessionId:   session.id,
