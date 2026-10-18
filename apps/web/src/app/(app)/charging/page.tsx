@@ -218,7 +218,7 @@ function costSourceBadge(source: string | null, t: (k: string) => string): strin
   if (source === 'supercharger')                  return t('charging.costSource_auto');
   if (source.startsWith('supercharger_tesla_api')) return t('charging.costSource_live');
   if (source.startsWith('supercharger_'))         return t('charging.costSource_cached');
-  if (source === 'scope_missing')                 return t('charging.costSource_est');
+  if (source === 'scope_missing')                 return '';
   return '';
 }
 
@@ -601,8 +601,8 @@ export default function ChargingPage() {
     if (!type) return 'home';
     if (type === 'tesla_sc' || type === 'supercharger') return 'sc';
     if (type === 'dc_third' || type === 'dc_fast')      return 'dc';
-    if (type === 'ac_city'  || type === 'ac_slow')      return 'public';
-    return 'home'; // home_wall, home_slow, ac_home, ac_fast → home
+    if (type === 'ac_city'  || type === 'ac_fast' || type === 'ac_slow') return 'public';
+    return 'home'; // home_wall, home_slow, ac_home, home_charger → home
   }
 
   // Session timeline: group completed sessions by date, stack by charger category
@@ -1009,8 +1009,12 @@ export default function ChargingPage() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-[11px] text-emerald-100/70">State</p>
-                  <p className="text-sm font-semibold text-emerald-100">{vehicleStatus?.chargingState ?? 'Charging'}</p>
+                  <p className="text-[11px] text-emerald-100/70">{t('charging.stateLabel')}</p>
+                  <p className="text-sm font-semibold text-emerald-100">
+                    {vehicleStatus?.chargingState === 'Charging'  ? t('status.charging')
+                      : vehicleStatus?.chargingState === 'Stopped' ? t('status.stopped')
+                      : vehicleStatus?.chargingState ?? t('status.charging')}
+                  </p>
                 </div>
               </div>
             </motion.div>

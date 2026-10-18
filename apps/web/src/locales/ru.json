@@ -502,6 +502,7 @@
     "recentSessions": "Последние сессии зарядки",
     "peak": "Пик",
     "active": "Активна",
+    "stateLabel": "Состояние",
     "costPendingSession": "Итоговая стоимость — после окончания зарядки",
     "smartAdvisorTitle": "Умный советник",
     "smartAdvisorSavedVsSupercharger": "Экономия vs Суперчарджер",

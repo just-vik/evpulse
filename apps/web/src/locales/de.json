@@ -467,6 +467,7 @@
     "recentSessions": "Letzte Ladesitzungen",
     "peak": "Spitze",
     "active": "Aktiv",
+    "stateLabel": "Status",
     "costPendingSession": "Endkosten werden nach Ladeende ermittelt",
     "smartAdvisorTitle": "Intelligenter Berater",
     "smartAdvisorSavedVsSupercharger": "Ersparnis vs Supercharger",

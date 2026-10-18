@@ -496,6 +496,7 @@
     "recentSessions": "Recent Charging Sessions",
     "peak": "Peak",
     "active": "Active",
+    "stateLabel": "State",
     "costPendingSession": "Final cost is set when charging ends",
     "smartAdvisorTitle": "Smart Advisor",
     "smartAdvisorSavedVsSupercharger": "Saved vs Supercharger",

@@ -94,11 +94,11 @@ function formatDuration(start: string, end: string | null, t: (k: string, o?: an
 }
 
 function formatTime(iso: string, locale?: string): string {
-  return new Date(iso).toLocaleTimeString(locale || 'de-DE', { hour: '2-digit', minute: '2-digit' })
+  return new Date(iso).toLocaleTimeString(locale ?? undefined, { hour: '2-digit', minute: '2-digit' })
 }
 
 function formatGapEndpoint(iso: string, locale?: string): string {
-  return new Date(iso).toLocaleString(locale || 'ru-RU', {
+  return new Date(iso).toLocaleString(locale ?? undefined, {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -106,14 +106,14 @@ function formatGapEndpoint(iso: string, locale?: string): string {
   })
 }
 
-function formatDayHeader(iso: string, t: (k: string) => string): string {
+function formatDayHeader(iso: string, t: (k: string) => string, locale?: string): string {
   const d = new Date(iso)
   const todayD = new Date(); todayD.setHours(0, 0, 0, 0)
   const yesterdayD = new Date(todayD); yesterdayD.setDate(todayD.getDate() - 1)
   d.setHours(0, 0, 0, 0)
   if (d.getTime() === todayD.getTime())     return t('common.today')
   if (d.getTime() === yesterdayD.getTime()) return t('common.yesterday')
-  return d.toLocaleDateString('ru', { weekday: 'long', day: 'numeric', month: 'long' })
+  return d.toLocaleDateString(locale ?? undefined, { weekday: 'long', day: 'numeric', month: 'long' })
 }
 
 function parseAddress(loc: string | null): { street: string; city: string } | null {
@@ -208,7 +208,7 @@ function computeParkingSocGaps(trips: ApiTrip[]) {
   return out
 }
 
-function groupByDay(trips: ApiTrip[], t: (k: string) => string) {
+function groupByDay(trips: ApiTrip[], t: (k: string) => string, locale?: string) {
   const map = new Map<string, ApiTrip[]>()
   for (const t of trips) {
     const k = dayKey(t.startTime)
@@ -219,7 +219,7 @@ function groupByDay(trips: ApiTrip[], t: (k: string) => string) {
     .sort(([a], [b]) => b.localeCompare(a))
     .map(([day, dayTrips]) => ({
       day,
-      label: formatDayHeader(day + 'T12:00:00', t),
+      label: formatDayHeader(day + 'T12:00:00', t, locale),
       trips: [...dayTrips].sort((a, b) => b.startTime.localeCompare(a.startTime)),
       dayDistance: dayTrips.filter(t => t.endTime).reduce((s, t) => s + (t.distanceKm ?? 0), 0),
     }))
@@ -374,7 +374,7 @@ function TripCard({
   expanded: boolean
   onToggle: () => void
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [replayOpen, setReplayOpen] = React.useState(false)
   const isLive     = trip._live || !trip.endTime
   const duration   = formatDuration(trip.startTime, trip.endTime, t)
@@ -426,7 +426,7 @@ function TripCard({
         <div className="flex items-center gap-x-3 gap-y-1 flex-wrap">
           {/* Time + duration */}
           <span className="text-[11px] text-muted-foreground tabular-nums">
-            {formatTime(trip.startTime)}
+            {formatTime(trip.startTime, i18n.language)}
             {isLive
               ? <span className="text-green-400 ml-1">{t('status.driving')}</span>
               : duration && <span className="text-muted-foreground"> • {duration}</span>
@@ -647,7 +647,7 @@ export default function TripsPage() {
   const effs         = completed.filter(t => t.efficiencyWhkm != null).map(t => t.efficiencyWhkm as number)
   const avgEffWhkm   = effs.length ? effs.reduce((a, b) => a + b) / effs.length : null
   const totalCost    = completed.reduce((s, t) => s + (t.costTotal ?? 0), 0)
-  const grouped      = groupByDay(trips, t)
+  const grouped      = groupByDay(trips, t, i18n.language)
   const periodDeltas = useTripsPeriodStats(completed)
 
   const parkingGaps = useMemo(() => computeParkingSocGaps(trips), [trips])
