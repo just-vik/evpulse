@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, UseGuards, Request, Query, Body, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Param, UseGuards, Request, Query, Body, NotFoundException, BadRequestException } from '@nestjs/common';
 
 /** Google-encoded polyline → [lng, lat] pairs (server-side, no external deps). */
 function decodePolylineServer(encoded: string): [number, number][] {
@@ -402,8 +402,8 @@ export class TripsController {
 
   /**
    * Manually trigger post-processor (map matching + reliability scoring).
-   * POST /trips/post-process
-   * Optional query: ?vehicleId=xxx
+   * POST /trips/post-process?vehicleId=xxx
+   * vehicleId is required — ownership is enforced via VehiclesService.findOne.
    */
   @Post('post-process')
   @ApiOperation({ summary: 'Run post-processor: map matching + reliability scoring. ?force=true re-runs all trips.' })
@@ -412,9 +412,10 @@ export class TripsController {
     @Query('vehicleId') vehicleId?: string,
     @Query('force') force?: string,
   ) {
-    if (vehicleId) {
-      await this.vehiclesService.findOne(vehicleId, req.user.id);
+    if (!vehicleId) {
+      throw new BadRequestException('vehicleId is required');
     }
+    await this.vehiclesService.findOne(vehicleId, req.user.id);
     const result = await this.tripPostProcessorService.processUnrated(vehicleId, force === 'true');
     return { status: 'ok', ...result };
   }
