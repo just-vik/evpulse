@@ -476,6 +476,26 @@ export class TelemetryFetcherService {
         this.logger.warn(
           `No data received for vehicle ${vehicleId} - vehicle may be sleeping`,
         );
+
+        // P1-D: Tesla 408 (vehicle_sleeping) is a reliable "car is parked" signal —
+        // a sleeping car cannot be driving. If the trip detector is in DRIVING state,
+        // synthesise a parked event so the trip closes promptly rather than waiting
+        // for the stale-trip watchdog (30–50 min delay). No-op when state is IDLE.
+        await this.tripDetector.checkTripState(vehicleId, {
+          speed:               0,
+          power:               0,
+          shift_state:         'P',
+          soc:                 undefined,
+          latitude:            undefined,
+          longitude:           undefined,
+          odometer:            undefined,
+          charging_state:      undefined,
+          charge_energy_added: null,
+          timestamp:           new Date().toISOString(),
+        }).catch((e: any) => {
+          this.logger.warn(`TripDetector sleep-parked signal error for ${vehicleId}: ${e.message}`);
+        });
+
         // Mark as SLEEPING so the next pollLoop iteration skips REST polling entirely.
         // Fleet Telemetry will push data when the car wakes up.
         await this.stateMachine.setSleeping(vehicleId);
