@@ -222,7 +222,17 @@ export class ChargingDetectorService {
           `restoring SOC ${sessionStartSoc}% from ${Math.round((now.getTime() - sessionStartTime.getTime()) / 1000)}s ago`,
         );
       } else {
-        this.logger.log(`[Charging] Session started for vehicle ${vehicleId} @ ${powerKw.toFixed(1)} kW (charger: ${data.fast_charger_type ?? 'AC'})`);
+        // pendingChargingAt exists but window expired — REST polling gap caused late detection.
+        // backfillSessionStart will correct startTime/SOC from Tesla billing history.
+        if (prev.pendingChargingAt) {
+          const lagMs = now.getTime() - prev.pendingChargingAt.getTime();
+          this.logger.warn(
+            `[Charging] Late session detection for vehicle ${vehicleId}: charging_state arrived ${Math.round(lagMs / 1000)}s ago ` +
+            `but window expired — session will open at current SOC ${data.soc ?? '?'}% (backfill will correct)`,
+          );
+        } else {
+          this.logger.log(`[Charging] Session started for vehicle ${vehicleId} @ ${powerKw.toFixed(1)} kW (charger: ${data.fast_charger_type ?? 'AC'})`);
+        }
       }
 
       // Note: cross-domain trip close is handled upstream by TelemetryEventEngine
@@ -529,14 +539,17 @@ export class ChargingDetectorService {
     //
     // Rule A — trivially tiny energy: < 50 Wh regardless of duration/SOC.
     //   Catches any residual ghost that slipped past inferredCharging fix.
-    // Rule B — short + no real SOC rise: < 5 min AND SOC didn't move.
-    //   Catches 1–2 min 'Charging' blips that produced a non-trivial power
-    //   reading but never actually charged the battery cells.
+    // Rule B — very short + no real SOC rise: < 2 min AND SOC didn't move.
+    //   Threshold reduced from 5 min: a slow 2 kW AC charger accumulates 0.133 kWh
+    //   in 4 min (> 0.1 kWh threshold), but with sparse REST polling a 3–4 min
+    //   real session might have only one telemetry point and appear as 0 kWh.
+    //   Limiting to < 2 min keeps us inside the PAUSE_GRACE_MS (3 min) safety zone —
+    //   any session that outlived the grace period is not a blip.
     const durationMs = now.getTime() - session.startTime.getTime();
     const socDelta   = endSoc != null ? endSoc - session.startSoc : 0;
     const isGhost    =
       roundedEnergy < 0.05 ||                              // Rule A: < 50 Wh — never real
-      (durationMs < 5 * 60_000 && socDelta < 0.5 && roundedEnergy < 0.1) || // Rule B
+      (durationMs < 2 * 60_000 && socDelta < 0.5 && roundedEnergy < 0.1) || // Rule B
       (socDelta < -1 && roundedEnergy < 5);                // Rule C: SOC dropped → not charging (regen/drive ghost)
     if (isGhost) {
       this.logger.warn(
