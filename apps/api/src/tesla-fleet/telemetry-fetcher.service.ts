@@ -516,6 +516,25 @@ export class TelemetryFetcherService {
         this.chargingSync.backfillSessionStart(vehicleId, vehicle.vin, userId).catch(() => {});
       }
 
+      // Feed REST telemetry to TripDetectorService so the trip state machine can close
+      // open trips when Fleet Telemetry is degraded (rate limited) and no MQTT events
+      // are reaching TelemetryPipelineService. Without this, parked transitions are only
+      // detected by the stale-trip watchdog, which adds 30–50 min of delay (P1-B, 2026-10-18).
+      await this.tripDetector.checkTripState(vehicleId, {
+        speed:               telemetryPoint.speed,
+        power:               telemetryPoint.power,
+        soc:                 telemetryPoint.soc ?? undefined,
+        latitude:            telemetryPoint.latitude ?? undefined,
+        longitude:           telemetryPoint.longitude ?? undefined,
+        odometer:            telemetryPoint.odometer ?? undefined,
+        charging_state:      telemetryPoint.charging_state ?? undefined,
+        shift_state:         telemetryPoint.shift_state ?? undefined,
+        charge_energy_added: telemetryPoint.charge_energy_added ?? null,
+        timestamp:           telemetryPoint.timestamp,
+      }).catch((e: any) => {
+        this.logger.error(`TripDetector error on REST poll for ${vehicleId}: ${e.message}`);
+      });
+
       this.logger.debug(`Telemetry fetched for vehicle ${vehicleId}`);
       return telemetryPoint;
     } catch (error: any) {

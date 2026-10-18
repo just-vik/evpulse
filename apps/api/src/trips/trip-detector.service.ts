@@ -529,8 +529,14 @@ export class TripDetectorService {
           // Covers both polling-gap departures (car already on highway when first seen)
           // and cold-start GPS where the first fix has artificially low speed and a
           // wrong position — the cached parked coords are the correct "from" anchor.
+          //
+          // Guard: if the car is already > 1 km from the prev cached position the cache
+          // is stale (fleet telemetry was degraded, prev reflects an old parking spot).
+          // Using stale coords caused wrong startLocation geocodes (P1-C, 2026-10-18).
           const prevWasParked = (prev.speed ?? 0) < 2 && prev.lat != null && prev.lon != null;
-          const startData = prevWasParked
+          const prevIsFar = prevWasParked && lat != null && lon != null &&
+            haversineKm(prev.lat!, prev.lon!, lat, lon) > 1.0;
+          const startData = (prevWasParked && !prevIsFar)
             ? { ...data, latitude: prev.lat!, longitude: prev.lon! }
             : data;
 

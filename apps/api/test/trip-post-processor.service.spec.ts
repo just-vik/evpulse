@@ -84,6 +84,7 @@ function makePrisma(trip: any, points: any[], telemetryPoints: any[] = []) {
     trip: {
       findMany:   jest.fn().mockResolvedValue([trip]),
       findUnique: jest.fn().mockResolvedValue(trip),
+      findFirst:  jest.fn().mockResolvedValue(null),  // no next trip → full 15-min odo window
       update:     jest.fn().mockImplementation(({ data }: any) => {
         updated.push(data);
         return Promise.resolve({ ...trip, ...data });

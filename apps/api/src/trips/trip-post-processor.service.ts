@@ -465,8 +465,25 @@ export class TripPostProcessorService {
     //
     // For the START anchor: use the last odometer reading AT OR BEFORE startTime
     // (car was parked, value is stable). If none exists, use first reading within 60s after.
-    // For the END anchor: use the last odometer reading at or shortly after endTime.
-    // This correctly anchors both endpoints regardless of MQTT delivery timing.
+    // For the END anchor: use the last odometer reading at or shortly after endTime,
+    // capped at the next trip's startTime - 1ms to prevent cross-trip contamination
+    // when processUnrated runs between two consecutive REST polls (P1-A fix).
+    const nextTripForOdo = await this.prisma.trip.findFirst({
+      where: {
+        vehicleId: trip.vehicleId as string,
+        startTime: { gt: tripEndTime },
+        id:        { not: trip.id },
+      },
+      orderBy: { startTime: 'asc' },
+      select:  { startTime: true },
+    });
+    const endOdoUpperBound = nextTripForOdo
+      ? new Date(Math.min(
+          tripEndTime.getTime() + 15 * 60_000,
+          nextTripForOdo.startTime.getTime() - 1,
+        ))
+      : new Date(tripEndTime.getTime() + 15 * 60_000);
+
     const [startOdoBefore, startOdoAfter, endOdoRow] = await Promise.all([
       // Last stable odo reading before trip start (parked state, value is stable)
       this.prisma.telemetryPoint.findFirst({
@@ -488,17 +505,15 @@ export class TripPostProcessorService {
         orderBy: { timestamp: 'asc' },
         select:  { odometer: true, timestamp: true },
       }),
-      // Last odo reading during the trip (up to 15 min after end).
-      // Using trip.startTime as lower bound instead of endTime-3min because
-      // on buffer-replay trips the car can stop sending telemetry 5-10 min
-      // before the trip closes, leaving the end odometer outside a narrow window.
-      // 15 min window (was 2 min) handles the case where fleet telemetry drops mid-trip:
-      // the trip closes at last-known-event but REST polling continues for several more
-      // minutes capturing real movement — we want that final odometer reading.
+      // Last odo reading during the trip (up to 15 min after end, capped at next trip start).
+      // The 15-min buffer handles buffer-replay trips where fleet telemetry drops mid-trip
+      // and REST polling continues capturing real movement after the trip closes.
+      // The nextTripStartTime cap prevents capturing odo readings that already belong to
+      // the following trip when processUnrated runs between REST poll intervals.
       this.prisma.telemetryPoint.findFirst({
         where: {
           vehicleId:  trip.vehicleId as string,
-          timestamp:  { gte: trip.startTime as Date, lte: new Date(tripEndTime.getTime() + 15 * 60_000) },
+          timestamp:  { gte: trip.startTime as Date, lte: endOdoUpperBound },
           odometer:   { not: null },
         },
         orderBy: { timestamp: 'desc' },
