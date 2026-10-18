@@ -309,6 +309,7 @@ export class TripReconcilerService {
                 distanceKm: Math.round(mergedDistance * 10) / 10,
                 energyUsedKwh: mergedEnergy,
                 efficiencyWhkm: mergedEfficiency,
+                costTotal: null,
                 reliability: null,
                 repairReason: null,
                 qualityScore: null,
