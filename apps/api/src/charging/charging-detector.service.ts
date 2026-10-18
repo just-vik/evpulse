@@ -799,6 +799,31 @@ export class ChargingDetectorService {
     }
     return Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b, 'unknown');
   }
+
+  async backfillLocations(vehicleId: string): Promise<{ updated: number; skipped: number }> {
+    if (!this.geocoding) return { updated: 0, skipped: 0 };
+    const sessions = await this.prisma.chargingSession.findMany({
+      where: {
+        vehicleId,
+        startLat: { not: null },
+        startLng: { not: null },
+        OR: [{ location: null }, { location: '' }],
+      },
+      select: { id: true, startLat: true, startLng: true },
+    });
+    let updated = 0, skipped = 0;
+    for (const s of sessions) {
+      if (s.startLat == null || s.startLng == null) { skipped++; continue; }
+      const loc = await this.geocoding.reverseShort(s.startLat, s.startLng).catch(() => null);
+      if (loc) {
+        await this.prisma.chargingSession.update({ where: { id: s.id }, data: { location: loc } as any });
+        updated++;
+      } else {
+        skipped++;
+      }
+    }
+    return { updated, skipped };
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────

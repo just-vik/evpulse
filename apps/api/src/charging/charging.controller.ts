@@ -140,4 +140,17 @@ export class ChargingController {
     const d = days ? Math.min(Math.max(1, Number(days)), 30) : 7;
     return this.chargingSync.adminSyncRecent(d);
   }
+
+  /**
+   * Backfill reverse-geocoded addresses for sessions that have GPS but no location string.
+   */
+  @Post('vehicle/:vehicleId/backfill-locations')
+  @ApiOperation({ summary: 'Backfill reverse-geocoded location for sessions with GPS but no address' })
+  async backfillLocations(
+    @Param('vehicleId') vehicleId: string,
+    @Request() req: any,
+  ) {
+    await this.vehiclesService.findOne(vehicleId, req.user.id);
+    return this.chargingDetectorService.backfillLocations(vehicleId);
+  }
 }
