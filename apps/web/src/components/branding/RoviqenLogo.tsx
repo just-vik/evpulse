@@ -29,8 +29,7 @@ export function RoviqenLogo({
         className="font-bold tracking-[0.08em] leading-none uppercase"
         style={{ fontSize }}
       >
-        <span style={{ color: 'var(--volt-lime, #C2F54A)' }}>ROVI</span>
-        <span style={{ color: 'var(--cloud-white, #F0F4ED)', opacity: 0.9 }}>QEN</span>
+        <span style={{ color: 'var(--cloud-white, #F0F4ED)' }}>ROVIQEN</span>
       </span>
     </span>
   )
