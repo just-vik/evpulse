@@ -429,21 +429,22 @@ export class VehicleAnalyticsService {
    * and as an informational echo in the result, for API-shape stability;
    * it is not read anywhere else in this method.
    */
-  async getCostSummary(vehicleId: string, pricePerKwh = 0.25) {
-    const cacheKey = `cost:summary:${vehicleId}:${pricePerKwh}`;
+  async getCostSummary(vehicleId: string, pricePerKwh = 0.25, fromIso?: string, toIso?: string) {
+    const now = new Date();
+    const from = fromIso ? new Date(fromIso) : new Date(now.getFullYear(), now.getMonth(), 1);
+    const to   = toIso   ? new Date(toIso)   : new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    const cacheKey = `cost:summary:${vehicleId}:${pricePerKwh}:${from.toISOString()}:${to.toISOString()}`;
     const cached = await this.cacheGet(cacheKey);
     if (cached) {
       return JSON.parse(cached);
     }
 
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
     const [sessions, distanceAgg] = await Promise.all([
       this.prisma.chargingSession.findMany({
         where: {
           vehicleId,
-          startTime: { gte: thirtyDaysAgo },
+          startTime: { gte: from, lt: to },
           endTime: { not: null },
         },
         select: {
@@ -457,7 +458,7 @@ export class VehicleAnalyticsService {
       this.prisma.trip.aggregate({
         where: {
           vehicleId,
-          startTime: { gte: thirtyDaysAgo },
+          startTime: { gte: from, lt: to },
         },
         _sum: { distanceKm: true },
       }),
@@ -494,7 +495,7 @@ export class VehicleAnalyticsService {
 
     const result = {
       vehicleId,
-      period: { startDate: thirtyDaysAgo, endDate: new Date() },
+      period: { startDate: from, endDate: to },
       energyKwh,
       totalCost,
       costPerKm: distanceKm > 0 ? totalCost / distanceKm : null,

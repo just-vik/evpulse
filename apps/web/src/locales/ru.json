@@ -303,6 +303,9 @@
       "energy": "Энергия",
       "efficiency": "Эффективность"
     },
+    "weekSummary": {
+      "title": "Эта неделя"
+    },
     "charging30d": {
       "title": "Зарядка",
       "sessions": "Сессии",
@@ -310,7 +313,7 @@
       "days": "дн."
     },
     "cost30d": {
-      "title": "Расходы (30 дней)",
+      "title": "Расходы",
       "energy": "Энергия",
       "costPerKm": "Стоим. / км",
       "price": "Тариф"

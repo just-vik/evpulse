@@ -752,11 +752,15 @@ export const apiClient = {
     vehicleId: string,
     rate: number | undefined,
     token = '',
+    opts?: { from?: Date; to?: Date },
   ): Promise<CostSummaryResponse> {
-    // No rate → API resolves from settings (homeChargingRate) → default 0.25
-    const q = rate != null ? `?rate=${rate}` : ''
+    const q = new URLSearchParams()
+    if (rate != null) q.set('rate', String(rate))
+    if (opts?.from) q.set('from', opts.from.toISOString())
+    if (opts?.to)   q.set('to',   opts.to.toISOString())
+    const qs = q.toString()
     return apiCall(
-      `/api/v1/vehicles/${vehicleId}/cost${q}`,
+      `/api/v1/vehicles/${vehicleId}/cost${qs ? `?${qs}` : ''}`,
       {},
       token,
     )

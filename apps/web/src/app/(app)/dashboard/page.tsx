@@ -8,15 +8,14 @@ import { Page } from '@/components/layout';
 import { useLayoutStore } from '@/stores/layout.store';
 import { useAuthStore } from '@/stores/authStore';
 import { apiClient } from '@/lib/api';
-import { Section } from '@/shared/ui';
 import { EmptyState } from '@/shared/ui/EmptyState';
 
 import { VehicleStatusCard } from '@/components/dashboard/VehicleStatusCard';
 import { InsightsSection } from '@/components/dashboard/InsightsSection';
-import { QuickActions } from '@/components/dashboard/QuickActions';
 import { AIActivityFeed } from '@/components/dashboard/AIActivityFeed';
 
 import { TripsTodayCard } from '@/components/dashboard/TripsTodayCard';
+import { WeekSummaryCard } from '@/components/dashboard/WeekSummaryCard';
 import { ChargingSummaryCard } from '@/components/dashboard/ChargingSummaryCard';
 import { CostAnalyticsCard } from '@/components/dashboard/CostAnalyticsCard';
 import { EfficiencyCard } from '@/components/dashboard/EfficiencyCard';
@@ -65,37 +64,34 @@ export default function DashboardPage() {
         {/* ── Tesla setup wizard (shown after OAuth redirect) ─────────────── */}
         <SetupWizard show={showSetupBanner} onDismiss={() => setShowSetupBanner(false)} />
 
-        {/* ── 1. Vehicle status (hero) ─────────────────────────────────────── */}
+        {/* ── 1. Vehicle status hero ───────────────────────────────────────── */}
         <VehicleStatusCard vehicleId={selectedVehicleId} />
 
-        {/* ── 2. Quick actions + today's summary ──────────────────────────── */}
-        <QuickActions vehicleId={selectedVehicleId} />
+        {/* ── 2. Activity — today + this week (2-col always) ──────────────── */}
+        <div className="grid grid-cols-2 gap-3">
+          <TripsTodayCard vehicleId={selectedVehicleId} />
+          <WeekSummaryCard vehicleId={selectedVehicleId} />
+        </div>
 
-        {/* ── 3. Analytics KPIs ───────────────────────────────────────────── */}
-        <Section title={t('dashboard.analytics')}>
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-4">
-
-            {/* ── Row 1: Key daily metrics (always visible) ───────────────── */}
-            <TripsTodayCard vehicleId={selectedVehicleId} />
-            <ChargingSummaryCard vehicleId={selectedVehicleId} />
-            <div className="col-span-2 lg:col-span-1">
-              <CostAnalyticsCard vehicleId={selectedVehicleId} />
-            </div>
-
-            {/* ── Row 2: Battery health & efficiency ──────────────────────── */}
+        {/* ── 3. Month analytics — charging · cost (2-col, 3rd wraps on mobile) */}
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+          <ChargingSummaryCard vehicleId={selectedVehicleId} />
+          <CostAnalyticsCard vehicleId={selectedVehicleId} />
+          <div className="col-span-2 lg:col-span-1">
             <BatteryHealthCard vehicleId={selectedVehicleId} />
-            <EfficiencyCard vehicleId={selectedVehicleId} />
-            <VampireDrainWidget vehicleId={selectedVehicleId} />
-
-            {/* ── Row 3: Forecasts ─────────────────────────────────────────── */}
-            <div className="col-span-2 lg:col-span-3">
-              <CostForecastCard vehicleId={selectedVehicleId} />
-            </div>
-
           </div>
-        </Section>
+        </div>
 
-        {/* ── 5. AI insights + activity — low priority, below data ────────── */}
+        {/* ── 4. Health & intelligence — efficiency · drain · forecast ────── */}
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+          <EfficiencyCard vehicleId={selectedVehicleId} />
+          <VampireDrainWidget vehicleId={selectedVehicleId} />
+          <div className="col-span-2 lg:col-span-1">
+            <CostForecastCard vehicleId={selectedVehicleId} />
+          </div>
+        </div>
+
+        {/* ── 5. AI insights + activity ────────────────────────────────────── */}
         <div className="space-y-4">
           <InsightsSection vehicleId={selectedVehicleId} />
           <AIActivityFeed vehicleId={selectedVehicleId} />

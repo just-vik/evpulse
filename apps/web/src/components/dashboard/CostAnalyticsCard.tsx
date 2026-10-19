@@ -17,12 +17,15 @@ export function CostAnalyticsCard({ vehicleId }: Props) {
   const { t } = useTranslation();
   const { formatMoney, formatPerKm } = useCurrency();
 
+  const now = new Date();
+  const monthName = now.toLocaleDateString(undefined, { month: 'long' });
+
   return (
     <BaseCard className="h-full">
       <div className="flex items-start justify-between mb-4">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
-            {t('cards.cost30d.title')}
+            {t('cards.cost30d.title')} ({monthName})
           </p>
           {isLoading ? (
             <div className="h-8 w-24 rounded-lg bg-[hsl(var(--muted)/0.5)] animate-pulse" />

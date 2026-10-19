@@ -94,9 +94,14 @@ export function useCostSummary(vehicleId: string | null, rate?: number) {
   const { accessToken } = useAuthStore()
   const queryClient = useQueryClient()
 
+  const now = new Date()
+  const monthFrom = new Date(now.getFullYear(), now.getMonth(), 1)
+  const monthTo   = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+  const monthKey  = `${now.getFullYear()}-${now.getMonth()}`
+
   const query = useQuery({
-    queryKey: ['cost-summary', vehicleId, rate ?? null],
-    queryFn: () => apiClient.getCostSummary(vehicleId!, rate, accessToken!),
+    queryKey: ['cost-summary', vehicleId, rate ?? null, monthKey],
+    queryFn: () => apiClient.getCostSummary(vehicleId!, rate, accessToken!, { from: monthFrom, to: monthTo }),
     enabled: !!vehicleId && !!accessToken,
     refetchInterval: 5 * 60_000,
     staleTime: 60_000,
@@ -108,7 +113,7 @@ export function useCostSummary(vehicleId: string | null, rate?: number) {
     costSummary: query.data ?? null,
     isLoading: query.isLoading,
     isError: query.isError,
-    refresh: () => queryClient.invalidateQueries({ queryKey: ['cost-summary', vehicleId, rate ?? null] }),
+    refresh: () => queryClient.invalidateQueries({ queryKey: ['cost-summary', vehicleId] }),
   }
 }
 

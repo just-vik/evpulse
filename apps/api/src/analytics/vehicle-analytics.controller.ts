@@ -71,15 +71,17 @@ export class VehicleAnalyticsController {
    * GET /api/v1/vehicles/:id/cost
    */
   @Get('vehicles/:vehicleId/cost')
-  @ApiOperation({ summary: 'Get energy cost analytics for last 30 days' })
+  @ApiOperation({ summary: 'Get energy cost analytics for a date range (default: current month)' })
   async getCost(
     @Param('vehicleId') vehicleId: string,
     @Request() req: any,
     @Query('rate') rate?: string,
+    @Query('from') from?: string,
+    @Query('to')   to?: string,
   ) {
     await this.vehiclesService.findOne(vehicleId, req.user.id);
     const pricePerKwh = rate ? Number(rate) : 0.13;
-    return this.vehicleAnalyticsService.getCostSummary(vehicleId, pricePerKwh);
+    return this.vehicleAnalyticsService.getCostSummary(vehicleId, pricePerKwh, from, to);
   }
 
   /**
