@@ -304,9 +304,10 @@
       "efficiency": "Эффективность"
     },
     "charging30d": {
-      "title": "Зарядка (30 дней)",
+      "title": "Зарядка",
       "sessions": "Сессии",
-      "avgSession": "Ср / сессия"
+      "avgSession": "Ср / сессия",
+      "days": "дн."
     },
     "cost30d": {
       "title": "Расходы (30 дней)",
@@ -971,6 +972,9 @@
     "activeDay": "Активный день",
     "lightDay": "Лёгкий день",
     "restDay": "День отдыха",
+    "activeWeek": "Активная неделя",
+    "lightWeek": "Обычная неделя",
+    "restWeek": "Неделя отдыха",
     "distance": "Расстояние",
     "energyUsed": "Потрачено",
     "charged": "Заряжено",

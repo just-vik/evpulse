@@ -4,6 +4,23 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/lib/api'
 import { useAuthStore } from '@/stores/authStore'
 
+function getWeekStart(): Date {
+  const now = new Date()
+  const day = now.getDay() // 0=Sun, 1=Mon, ..., 6=Sat
+  const diff = day === 0 ? -6 : 1 - day
+  const monday = new Date(now)
+  monday.setDate(now.getDate() + diff)
+  monday.setHours(0, 0, 0, 0)
+  return monday
+}
+
+function getWeekEnd(): Date {
+  const monday = getWeekStart()
+  const nextMonday = new Date(monday)
+  nextMonday.setDate(monday.getDate() + 7)
+  return nextMonday
+}
+
 export interface TripsTodaySummary {
   vehicleId:      string
   tripCount:      number
@@ -92,6 +109,58 @@ export function useCostSummary(vehicleId: string | null, rate?: number) {
     isLoading: query.isLoading,
     isError: query.isError,
     refresh: () => queryClient.invalidateQueries({ queryKey: ['cost-summary', vehicleId, rate ?? null] }),
+  }
+}
+
+export function useTripsThisWeek(vehicleId: string | null) {
+  const { accessToken } = useAuthStore()
+  const queryClient = useQueryClient()
+
+  const weekStart = getWeekStart()
+  const weekEnd   = getWeekEnd()
+
+  const query = useQuery({
+    queryKey: ['trips-week', vehicleId, weekStart.toISOString()],
+    queryFn: () => apiClient.getTripsToday(vehicleId!, accessToken!, { from: weekStart, to: weekEnd }),
+    enabled: !!vehicleId && !!accessToken,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+    gcTime: 10 * 60_000,
+    retry: 1,
+  })
+
+  return {
+    tripsThisWeek: query.data ?? null,
+    isLoading: query.isLoading,
+    isError: query.isError,
+    weekStart,
+    refresh: () => queryClient.invalidateQueries({ queryKey: ['trips-week', vehicleId] }),
+  }
+}
+
+export function useChargingThisWeek(vehicleId: string | null) {
+  const { accessToken } = useAuthStore()
+  const queryClient = useQueryClient()
+
+  const weekStart = getWeekStart()
+  const weekEnd   = getWeekEnd()
+
+  const query = useQuery({
+    queryKey: ['charging-week', vehicleId, weekStart.toISOString()],
+    queryFn: () => apiClient.getChargingSummary(vehicleId!, accessToken!, { from: weekStart, to: weekEnd }),
+    enabled: !!vehicleId && !!accessToken,
+    refetchInterval: 5 * 60_000,
+    staleTime: 60_000,
+    gcTime: 15 * 60_000,
+    retry: 1,
+  })
+
+  return {
+    chargingThisWeek: query.data ?? null,
+    isLoading: query.isLoading,
+    isError: query.isError,
+    weekStart,
+    refresh: () => queryClient.invalidateQueries({ queryKey: ['charging-week', vehicleId] }),
   }
 }
 

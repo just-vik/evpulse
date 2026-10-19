@@ -664,16 +664,21 @@ export const apiClient = {
     return apiCall(`/api/v1/trips/${tripId}/points`, {}, token);
   },
 
-  // ── Trips Today aggregate ──
+  // ── Trips Today / date-range aggregate ──
   getTripsToday(
     vehicleId: string,
     token:     string,
+    opts?:     { from?: Date; to?: Date },
   ): Promise<TripsTodayResponse> {
-    // Pass local midnight as ISO so the server counts trips in the user's timezone,
-    // not UTC midnight (which would misattribute late-night trips to the wrong day).
-    const localMidnight = new Date()
-    localMidnight.setHours(0, 0, 0, 0)
-    const q = new URLSearchParams({ dayStart: localMidnight.toISOString() })
+    const q = new URLSearchParams()
+    if (opts?.from) {
+      q.set('dayStart', opts.from.toISOString())
+    } else {
+      const localMidnight = new Date()
+      localMidnight.setHours(0, 0, 0, 0)
+      q.set('dayStart', localMidnight.toISOString())
+    }
+    if (opts?.to) q.set('dayEnd', opts.to.toISOString())
     return apiCall(`/api/v1/vehicles/${vehicleId}/trips/today?${q}`, {}, token)
   },
 
@@ -726,9 +731,14 @@ export const apiClient = {
   getChargingSummary(
     vehicleId: string,
     token:     string,
+    opts?:     { from?: Date; to?: Date },
   ): Promise<ChargingSummaryResponse> {
+    const q = new URLSearchParams()
+    if (opts?.from) q.set('from', opts.from.toISOString())
+    if (opts?.to)   q.set('to',   opts.to.toISOString())
+    const qs = q.toString()
     return apiCall(
-      `/api/v1/vehicles/${vehicleId}/charging/summary`,
+      `/api/v1/vehicles/${vehicleId}/charging/summary${qs ? `?${qs}` : ''}`,
       {},
       token,
     )

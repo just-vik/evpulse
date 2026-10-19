@@ -3,12 +3,12 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ZapOff, Lock, Unlock, Volume2, RefreshCw } from 'lucide-react';
-import { PowerOnIcon, ChargingIcon, ClimateIcon } from '@/components/icons/NavIcons';
+import { ChargingIcon, ClimateIcon } from '@/components/icons/NavIcons';
 import { DistanceIcon, BoltMetricIcon, ChargedIcon, LeafMetricIcon, StaleIcon } from '@/components/icons/StatusIcons';
 import { useTranslation } from 'react-i18next';
 import { useVehicleStatus } from '@/hooks/useVehicleStatus';
 import { useVehicleCommands } from '@/hooks/useVehicleCommands';
-import { useTripsToday, useChargingSummary } from '@/hooks/useVehicleAggregates';
+import { useTripsThisWeek, useChargingThisWeek } from '@/hooks/useVehicleAggregates';
 import { BaseCard, ConfirmDialog } from '@/shared/ui';
 import { COMMAND_CONFIRM_POLICY, needsConfirmation } from '@/hooks/vehicleCommandPolicy';
 
@@ -70,14 +70,6 @@ interface ActionState {
 
 const ACTIONS: ActionDef[] = [
   {
-    id: 'wake',
-    labelKey: 'quickActions.wake',
-    icon: PowerOnIcon,
-    visible: (s) => ['sleeping', 'offline', 'waking'].includes((s.vehicleState ?? '').toLowerCase()),
-    variant: 'secondary',
-    command: 'wake',
-  },
-  {
     id: 'start-charge',
     labelKey: 'quickActions.startCharge',
     icon: ChargingIcon,
@@ -136,8 +128,8 @@ export function QuickActions({ vehicleId }: Props) {
   const { t } = useTranslation();
   const [confirmAction, setConfirmAction] = useState<ActionDef | null>(null);
 
-  const { tripsToday } = useTripsToday(vehicleId);
-  const { chargingSummary } = useChargingSummary(vehicleId);
+  const { tripsThisWeek } = useTripsThisWeek(vehicleId);
+  const { chargingThisWeek } = useChargingThisWeek(vehicleId);
 
   const dataQuality = (status as any)?.dataQuality as string | undefined;
   const isStaleOrOffline = !!dataQuality && dataQuality !== 'REALTIME' && dataQuality !== 'DELAYED';
@@ -162,48 +154,59 @@ export function QuickActions({ vehicleId }: Props) {
   };
 
   const visible = ACTIONS.filter((a) => {
-    if (controlsDisabled) return a.id === 'wake' && a.visible(actionState);
+    if (controlsDisabled) return false;
     return a.visible(actionState);
   });
 
-  // Wake is the only action when offline — show it full width
-  const wakeOnly = visible.length === 1 && visible[0].id === 'wake';
-
-  const km      = tripsToday?.distanceKm ?? 0;
-  const trips   = tripsToday?.tripCount ?? 0;
-  const charged = chargingSummary?.energyKwh ?? 0;
+  const km      = tripsThisWeek?.distanceKm ?? 0;
+  const trips   = tripsThisWeek?.tripCount ?? 0;
+  const charged = chargingThisWeek?.energyKwh ?? 0;
   const headline =
-    km >= 50 || trips >= 3 ? t('dailySummary.activeDay', { defaultValue: 'Active day' })
-    : km > 0 || charged > 0 ? t('dailySummary.lightDay', { defaultValue: 'Light day' })
-    : t('dailySummary.restDay', { defaultValue: 'Rest day' });
+    km >= 200 || trips >= 10 ? t('dailySummary.activeWeek', { defaultValue: 'Активная неделя' })
+    : km > 0 || charged > 0  ? t('dailySummary.lightWeek', { defaultValue: 'Обычная неделя' })
+    : t('dailySummary.restWeek', { defaultValue: 'Неделя отдыха' });
 
-  const todayKpis = [
+  // Build Mon–Sun label for current week
+  const weekStart = (() => {
+    const now = new Date();
+    const day = now.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    const m = new Date(now);
+    m.setDate(now.getDate() + diff);
+    m.setHours(0, 0, 0, 0);
+    return m;
+  })();
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6);
+  const weekLabel = `${weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${weekEnd.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+
+  const weekKpis = [
     {
       icon: DistanceIcon,
-      label: t('dailySummary.distance', { defaultValue: 'Distance' }),
-      value: tripsToday ? tripsToday.distanceKm.toFixed(1) : '0',
+      label: t('dailySummary.distance', { defaultValue: 'Расстояние' }),
+      value: tripsThisWeek ? tripsThisWeek.distanceKm.toFixed(1) : '0',
       unit: 'km',
       color: '#26B89C',
     },
     {
       icon: BoltMetricIcon,
-      label: t('dailySummary.energyUsed', { defaultValue: 'Used' }),
-      value: tripsToday ? tripsToday.energyKwh.toFixed(1) : '0',
+      label: t('dailySummary.energyUsed', { defaultValue: 'Потрачено' }),
+      value: tripsThisWeek ? tripsThisWeek.energyKwh.toFixed(1) : '0',
       unit: 'kWh',
       color: '#3B82F6',
     },
     {
       icon: ChargedIcon,
-      label: t('dailySummary.charged', { defaultValue: 'Charged' }),
-      value: chargingSummary ? chargingSummary.energyKwh.toFixed(1) : '0',
+      label: t('dailySummary.charged', { defaultValue: 'Заряжено' }),
+      value: chargingThisWeek ? chargingThisWeek.energyKwh.toFixed(1) : '0',
       unit: 'kWh',
       color: '#8CBC38',
     },
     {
       icon: LeafMetricIcon,
-      label: t('dailySummary.efficiency', { defaultValue: 'Eff.' }),
-      value: tripsToday?.efficiencyWhKm != null ? String(Math.round(tripsToday.efficiencyWhKm)) : '—',
-      unit: tripsToday?.efficiencyWhKm != null ? 'Wh/km' : '',
+      label: t('dailySummary.efficiency', { defaultValue: 'Эффект.' }),
+      value: tripsThisWeek?.efficiencyWhKm != null ? String(Math.round(tripsThisWeek.efficiencyWhKm)) : '—',
+      unit: tripsThisWeek?.efficiencyWhKm != null ? 'Wh/km' : '',
       color: '#3CBA72',
     },
   ];
@@ -230,26 +233,6 @@ export function QuickActions({ vehicleId }: Props) {
         </div>
       ) : visible.length === 0 ? (
         <p className="text-xs text-muted-foreground">{t('quickActions.noActions')}</p>
-      ) : wakeOnly ? (
-        /* Wake-only: full-width primary button */
-        <motion.button
-          initial={{ opacity: 0, scale: 0.97 }}
-          animate={{ opacity: 1, scale: 1 }}
-          onClick={() => requestAction(ACTIONS.find((a) => a.id === 'wake')!)}
-          disabled={isBusy}
-          aria-busy={isBusy && busyCommand === 'wake'}
-          className={`
-            w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border
-            text-sm transition-all disabled:opacity-60 disabled:cursor-default
-            ${VARIANT_CLASSES.secondary}
-            ${isBusy && busyCommand === 'wake' ? 'scale-95' : ''}
-          `}
-        >
-          {isBusy && busyCommand === 'wake'
-            ? <RefreshCw className="w-4 h-4 animate-spin" />
-            : <PowerOnIcon size={15} />}
-          {isBusy && busyCommand === 'wake' ? t(PENDING_LABEL_KEY.wake) : t('quickActions.wake')}
-        </motion.button>
       ) : (
         /* Normal: flex row, wraps naturally */
         <div className="flex flex-wrap gap-2">
@@ -296,25 +279,23 @@ export function QuickActions({ vehicleId }: Props) {
         />
       )}
 
-      {/* Today's summary — divider + 4 stat chips */}
+      {/* Weekly summary — divider + 4 stat chips */}
       <div className="mt-3.5 pt-3.5 border-t border-[hsl(var(--border)/0.4)]">
         <div className="flex items-center gap-1.5 mb-2.5">
           <span className="text-[10px] font-medium text-muted-foreground">{headline}</span>
           <span className="text-[10px] text-muted-foreground/30">·</span>
-          <span className="text-[10px] text-muted-foreground/50">
-            {new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
-          </span>
+          <span className="text-[10px] text-muted-foreground/50">{weekLabel}</span>
           {trips > 0 && (
             <>
               <span className="text-[10px] text-muted-foreground/30">·</span>
               <span className="text-[10px] text-muted-foreground/50">
-                {trips} {trips === 1 ? t('dailySummary.trip', { defaultValue: 'trip' }) : t('dailySummary.trips', { defaultValue: 'trips' })}
+                {trips} {trips === 1 ? t('dailySummary.trip', { defaultValue: 'поездка' }) : t('dailySummary.trips', { defaultValue: 'поездки' })}
               </span>
             </>
           )}
         </div>
         <div className="grid grid-cols-4 gap-1.5">
-          {todayKpis.map((kpi) => (
+          {weekKpis.map((kpi) => (
             <div key={kpi.label} className="flex flex-col items-center gap-1 min-w-0">
               <span className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
                 style={{ background: `${kpi.color}18`, color: kpi.color }}>

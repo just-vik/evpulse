@@ -14,12 +14,16 @@ export function ChargingSummaryCard({ vehicleId }: Props) {
   const { chargingSummary, isLoading } = useChargingSummary(vehicleId);
   const { t } = useTranslation();
 
+  const now = new Date();
+  const monthName = now.toLocaleDateString(undefined, { month: 'long' });
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+
   return (
     <BaseCard>
       <div className="flex items-start justify-between mb-4">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
-            {t('cards.charging30d.title')}
+            {t('cards.charging30d.title')} ({monthName})
           </p>
           {isLoading ? (
             <div className="h-8 w-28 rounded-lg bg-[hsl(var(--muted)/0.5)] animate-pulse" />
@@ -28,7 +32,7 @@ export function ChargingSummaryCard({ vehicleId }: Props) {
               {chargingSummary ? `${chargingSummary.energyKwh.toFixed(1)} kWh` : '0.0 kWh'}
             </h3>
           )}
-          <p className="text-[10px] text-muted-foreground/50 mt-0.5">{t('cards.charging30d.period', { defaultValue: 'за 30 дней' })}</p>
+          <p className="text-[10px] text-muted-foreground/50 mt-0.5">{daysInMonth} {t('cards.charging30d.days', { defaultValue: 'дн.' })}</p>
         </div>
         <div className="w-11 h-11 rounded-[12px] bg-[#8CBC38]/10 flex items-center justify-center text-[#8CBC38] shrink-0">
           <PlugIcon size={22} />

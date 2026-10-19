@@ -319,13 +319,13 @@ export class VehicleAnalyticsService {
    * Only counts COMPLETED trips (endTime != null).
    * Efficiency is weighted by distance and only uses trips with both distance AND energy.
    */
-  async getTripsToday(vehicleId: string, dayStartIso?: string) {
+  async getTripsToday(vehicleId: string, dayStartIso?: string, dayEndIso?: string) {
     const startOfDay = dayStartIso ? new Date(dayStartIso) : (() => {
       const d = new Date(); d.setUTCHours(0, 0, 0, 0); return d;
     })();
-    const endOfDay = new Date(startOfDay.getTime() + 86_400_000);
+    const endOfDay = dayEndIso ? new Date(dayEndIso) : new Date(startOfDay.getTime() + 86_400_000);
 
-    const cacheKey = `trips:today:${vehicleId}:${startOfDay.toISOString()}`;
+    const cacheKey = `trips:today:${vehicleId}:${startOfDay.toISOString()}:${endOfDay.toISOString()}`;
     const cached = await this.cacheGet(cacheKey);
     if (cached) return JSON.parse(cached);
 
@@ -370,20 +370,21 @@ export class VehicleAnalyticsService {
   /**
    * Charging summary for last 30 days.
    */
-  async getChargingSummary(vehicleId: string) {
-    const cacheKey = `charging:summary:${vehicleId}`;
+  async getChargingSummary(vehicleId: string, fromIso?: string, toIso?: string) {
+    const now = new Date();
+    const from = fromIso ? new Date(fromIso) : new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = toIso ? new Date(toIso) : new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    const cacheKey = `charging:summary:${vehicleId}:${from.toISOString()}:${to.toISOString()}`;
     const cached = await this.cacheGet(cacheKey);
     if (cached) {
       return JSON.parse(cached);
     }
 
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
     const sessions = await this.prisma.chargingSession.findMany({
       where: {
         vehicleId,
-        startTime: { gte: thirtyDaysAgo },
+        startTime: { gte: from, lt: to },
       },
       select: {
         energyAddedKwh: true,

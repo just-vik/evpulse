@@ -37,29 +37,32 @@ export class VehicleAnalyticsController {
    * GET /api/v1/vehicles/:id/trips/today
    */
   @Get('vehicles/:vehicleId/trips/today')
-  @ApiOperation({ summary: 'Get trips summary for today' })
+  @ApiOperation({ summary: 'Get trips summary for a day or date range' })
   async getTripsToday(
     @Param('vehicleId') vehicleId: string,
     @Request() req: any,
     @Query('dayStart') dayStart?: string,
+    @Query('dayEnd') dayEnd?: string,
   ) {
     await this.vehiclesService.findOne(vehicleId, req.user.id);
-    return this.vehicleAnalyticsService.getTripsToday(vehicleId, dayStart);
+    return this.vehicleAnalyticsService.getTripsToday(vehicleId, dayStart, dayEnd);
   }
 
   /**
-   * Charging summary for last 30 days.
+   * Charging summary for a date range (defaults to current calendar month).
    *
-   * GET /api/v1/vehicles/:id/charging/summary
+   * GET /api/v1/vehicles/:id/charging/summary?from=<iso>&to=<iso>
    */
   @Get('vehicles/:vehicleId/charging/summary')
-  @ApiOperation({ summary: 'Get charging summary for last 30 days' })
+  @ApiOperation({ summary: 'Get charging summary for a date range (default: current month)' })
   async getChargingSummary(
     @Param('vehicleId') vehicleId: string,
     @Request() req: any,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
     await this.vehiclesService.findOne(vehicleId, req.user.id);
-    return this.vehicleAnalyticsService.getChargingSummary(vehicleId);
+    return this.vehicleAnalyticsService.getChargingSummary(vehicleId, from, to);
   }
 
   /**
