@@ -219,6 +219,30 @@ describe('Ghost Rule C — SOC drop + small energy (with 30-min duration guard)'
     expect(updates).toHaveLength(1);
   });
 
+  // KNOWN LIMITATION: late-detected real sessions shorter than 30 minutes cannot
+  // be distinguished from ghosts by duration alone. Rule C fires because both
+  // conditions are true: durationMs < 30 min AND socDelta < -1 AND energy < 5 kWh.
+  //
+  // To fix this properly we would need to compare chargeEnergyAdded at session start
+  // vs a prior baseline (not currently persisted) or require a positive cumulative
+  // chargeEnergyAdded trajectory. Out of scope for this fix.
+  it('KNOWN LIMITATION: late-detected real session < 30 min with post-drive SOC drop → deleted by Rule C', async () => {
+    // Scenario: real SC started at T=0, EVPulse detected at T+20 min (late).
+    // chargeEnergyAdded delta seen by EVPulse = 3.52 kWh (only tail visible).
+    // Closing poll at T+25 min captured post-drive SOC = 73% vs start SOC = 76%.
+    // durationMs = 20 min < 30 min, socDelta = -3, energy = 3.52 < 5 → Rule C fires.
+    // Real energy delivered before detection is lost — session deleted.
+    const updates: any[] = []; const deletes: string[] = [];
+    const session = makeSession({ startSoc: 76, sessionAgeMs: 20 * 60_000 }); // 20 min
+    const svc = buildService(session, updates, deletes);
+
+    await (svc as any).endSession(VEHICLE_ID, { soc: 73 }, 3.52, new Date());
+
+    // Rule C fires: short session + SOC drop + low energy → deleted as ghost
+    expect(deletes).toContain('sess-ghost');
+    expect(updates).toHaveLength(0);
+  });
+
 });
 
 // ─── Normal sessions (all rules pass) ────────────────────────────────────────
