@@ -54,7 +54,7 @@ const DEFAULT_REQ_COST_EUR = 0.001;         // halved: app counts 2x more calls 
  * see classifyTeslaApiError in tesla-fleet.service.ts).
  */
 const DATEN_CALLS_PER_EUR = 500;
-const DATEN_CALLS_PER_POLL = 2; // getVehicleSummary + getVehicleData
+const DATEN_CALLS_PER_POLL = 1; // only vehicle_data is a billed Daten call; getVehicleSummary is not
 const FLEET_MONTHLY_BUDGET_EUR = Number(process.env.TESLA_FLEET_MONTHLY_BUDGET_EUR ?? 10);
 const FLEET_BUDGET_STOP_PCT = Number(process.env.TESLA_FLEET_BUDGET_STOP_PCT ?? 0.9);
 const FLEET_BUDGET_CAP_CALLS = FLEET_MONTHLY_BUDGET_EUR * DATEN_CALLS_PER_EUR;
@@ -400,7 +400,6 @@ export class TelemetryFetcherService {
       const summary = await this.withTimeout(
         this.teslaFleet.getVehicleSummary(teslaId, accessToken),
       );
-      await this.recordEstimatedBillingRequest(vehicleId);
       const connectionState = summary?.state as string | undefined;
       activeSpan()?.setAttribute('tesla.vehicle_state', connectionState ?? 'unknown');
 
