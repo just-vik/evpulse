@@ -47,9 +47,9 @@ const COLORS: Record<InsightSeverity, {
     glow: 'shadow-amber-500/20',
   },
   success: {
-    border: 'border-[#43D1AD]/40', bg: 'bg-[#43D1AD]/5', hoverBg: 'hover:bg-[#43D1AD]/10',
-    icon: 'text-[#43D1AD]', badge: 'bg-[#43D1AD]/15', badgeText: 'text-[#43D1AD]',
-    glow: 'shadow-[#43D1AD]/20',
+    border: 'border-[#34B49C]/40', bg: 'bg-[#34B49C]/5', hoverBg: 'hover:bg-[#34B49C]/10',
+    icon: 'text-[#34B49C]', badge: 'bg-[#34B49C]/15', badgeText: 'text-[#34B49C]',
+    glow: 'shadow-[#34B49C]/20',
   },
   info: {
     border: 'border-[#3B82F6]/40', bg: 'bg-[#3B82F6]/5', hoverBg: 'hover:bg-[#3B82F6]/10',
@@ -156,7 +156,7 @@ function FocusPanel({
             <h3 className="text-base font-semibold text-foreground">{insight.title}</h3>
             {insight.confidence != null && (
               <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-                insight.confidence >= 80 ? 'bg-[#43D1AD]/15 text-[#43D1AD]' :
+                insight.confidence >= 80 ? 'bg-[#34B49C]/15 text-[#34B49C]' :
                 insight.confidence >= 60 ? 'bg-amber-500/15 text-amber-400' :
                 'bg-[hsl(var(--secondary)/0.6)] text-muted-foreground'
               }`}>
@@ -205,7 +205,7 @@ function FocusPanel({
                 <button
                   onClick={() => sendFeedback(true)}
                   title={t('dashboard.yesHelpful')}
-                  className="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-[#43D1AD] hover:bg-[#43D1AD]/10 transition-colors"
+                  className="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-[#34B49C] hover:bg-[#34B49C]/10 transition-colors"
                 >
                   <ThumbsUp className="w-3.5 h-3.5" />
                 </button>

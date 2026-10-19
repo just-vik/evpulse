@@ -15,7 +15,7 @@ function ChemistryBadge({ chemistry }: { chemistry: string }) {
   return (
     <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide ${
       isLfp
-        ? 'bg-[#43D1AD]/15 text-[#43D1AD] border border-[#43D1AD]/20'
+        ? 'bg-[#34B49C]/15 text-[#34B49C] border border-[#34B49C]/20'
         : 'bg-[#3B82F6]/15 text-[#3B82F6] border border-[#3B82F6]/20'
     }`}>
       {chemistry}
@@ -160,7 +160,7 @@ export function VehicleSpecCard({ vehicleId }: Props) {
       {chargeRec && (
         <div className={`mt-3 flex items-start gap-2 px-2.5 py-2 rounded-lg text-[11px] leading-relaxed ${
           chargeRec === 'charge_to_100'
-            ? 'bg-[#43D1AD]/10 border border-[#43D1AD]/20 text-[#43D1AD]'
+            ? 'bg-[#34B49C]/10 border border-[#34B49C]/20 text-[#34B49C]'
             : 'bg-amber-500/10 border border-amber-500/20 text-amber-300'
         }`}>
           <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />

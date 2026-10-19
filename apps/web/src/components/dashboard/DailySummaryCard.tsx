@@ -23,7 +23,7 @@ export function DailySummaryCard({ vehicleId }: Props) {
     const charged = chargingSummary?.energyKwh ?? 0;
 
     if (km >= 50 || trips >= 3) {
-      return { headline: t('dailySummary.activeDay', { defaultValue: 'Active day' }), accentClass: 'text-[#43D1AD]', glowColor: 'rgba(67,209,173,0.06)' };
+      return { headline: t('dailySummary.activeDay', { defaultValue: 'Active day' }), accentClass: 'text-[#34B49C]', glowColor: 'rgba(52,180,156,0.06)' };
     }
     if (km > 0 || charged > 0) {
       return { headline: t('dailySummary.lightDay', { defaultValue: 'Light day' }), accentClass: 'text-[#3B82F6]', glowColor: 'rgba(59,130,246,0.06)' };
@@ -37,7 +37,7 @@ export function DailySummaryCard({ vehicleId }: Props) {
       label: t('dailySummary.distance', { defaultValue: 'Distance' }),
       value: tripsToday ? tripsToday.distanceKm.toFixed(1) : '0',
       unit: 'km',
-      color: '#43D1AD',
+      color: '#34B49C',
     },
     {
       icon: BoltIcon,
@@ -51,7 +51,7 @@ export function DailySummaryCard({ vehicleId }: Props) {
       label: t('dailySummary.charged30d', { defaultValue: 'Charged (30d)' }),
       value: chargingSummary ? chargingSummary.energyKwh.toFixed(1) : '0',
       unit: 'kWh',
-      color: '#C2F54A',
+      color: '#A4D438',
     },
     {
       icon: LeafIcon,

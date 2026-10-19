@@ -26,13 +26,13 @@ interface Props {
 }
 
 const STATUS_ICON = {
-  ok:   <CheckCircle2 size={14} className="text-[#43D1AD] shrink-0 mt-0.5" />,
+  ok:   <CheckCircle2 size={14} className="text-[#34B49C] shrink-0 mt-0.5" />,
   warn: <AlertCircle  size={14} className="text-amber-400 shrink-0 mt-0.5" />,
   info: <Info         size={14} className="text-[#3B82F6] shrink-0 mt-0.5" />,
 };
 
 const STATUS_BG = {
-  ok:   'bg-[#43D1AD]/6  border-[#43D1AD]/20',
+  ok:   'bg-[#34B49C]/6  border-[#34B49C]/20',
   warn: 'bg-amber-500/6  border-amber-500/20',
   info: 'bg-[#3B82F6]/6  border-[#3B82F6]/20',
 };

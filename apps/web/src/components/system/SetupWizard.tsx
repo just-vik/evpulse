@@ -141,7 +141,7 @@ export function SetupWizard({ show, onDismiss }: Props) {
                   <div key={step.id} className="flex items-start gap-3">
                     <div className="shrink-0 mt-0.5">
                       {step.done ? (
-                        <CheckCircle2 size={16} className="text-[#43D1AD]" />
+                        <CheckCircle2 size={16} className="text-[#34B49C]" />
                       ) : (
                         <Circle size={16} className="text-muted-foreground/40" />
                       )}

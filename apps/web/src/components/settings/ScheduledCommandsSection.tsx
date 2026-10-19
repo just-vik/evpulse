@@ -267,7 +267,7 @@ export function ScheduledCommandsSection({ vehicleId, vehicles }: Props) {
                   disabled={toggleMutation.isPending}
                   className={`text-xs px-2 py-1 rounded-lg border transition ${
                     a.enabled
-                      ? 'bg-[#43D1AD]/10 border-[#43D1AD]/20 text-[#43D1AD]'
+                      ? 'bg-[#34B49C]/10 border-[#34B49C]/20 text-[#34B49C]'
                       : 'border-[hsl(var(--border)/0.85)] text-muted-foreground'
                   }`}
                 >

@@ -160,29 +160,29 @@ export function VehicleStatusCard({ vehicleId }: Props) {
             transition={{ duration: 0.22 }}
             className="overflow-hidden"
           >
-            <div className="stat-grid grid grid-cols-3 gap-2 p-3 rounded-xl bg-[#43D1AD]/8 border border-[#43D1AD]/20">
+            <div className="stat-grid grid grid-cols-3 gap-2 p-3 rounded-xl bg-[#34B49C]/8 border border-[#34B49C]/20">
               <div className="text-center">
-                <p className="text-[9px] uppercase tracking-wider text-[#43D1AD]/70 mb-0.5">{t('vehicleStatus.speed')}</p>
-                <p className="text-2xl font-bold text-[#43D1AD] tabular-nums leading-none">
+                <p className="text-[9px] uppercase tracking-wider text-[#34B49C]/70 mb-0.5">{t('vehicleStatus.speed')}</p>
+                <p className="text-2xl font-bold text-[#34B49C] tabular-nums leading-none">
                   {status.speed != null ? Math.round(status.speed) : '—'}
                 </p>
-                <p className="text-[9px] text-[#43D1AD]/60 mt-0.5">km/h</p>
+                <p className="text-[9px] text-[#34B49C]/60 mt-0.5">km/h</p>
               </div>
-              <div className="text-center border-x border-[#43D1AD]/15">
-                <p className="text-[9px] uppercase tracking-wider text-[#43D1AD]/70 mb-0.5">{t('vehicleStatus.power')}</p>
-                <p className={`text-xl font-bold tabular-nums leading-none ${(status.power ?? 0) < 0 ? 'text-[#43D1AD]' : 'text-amber-400'}`}>
+              <div className="text-center border-x border-[#34B49C]/15">
+                <p className="text-[9px] uppercase tracking-wider text-[#34B49C]/70 mb-0.5">{t('vehicleStatus.power')}</p>
+                <p className={`text-xl font-bold tabular-nums leading-none ${(status.power ?? 0) < 0 ? 'text-[#34B49C]' : 'text-amber-400'}`}>
                   {status.power != null ? `${status.power > 0 ? '+' : ''}${status.power.toFixed(1)}` : '—'}
                 </p>
-                <p className="text-[9px] text-[#43D1AD]/60 mt-0.5">
+                <p className="text-[9px] text-[#34B49C]/60 mt-0.5">
                   {status.power != null && status.power < 0 ? t('vehicleStatus.regen', { defaultValue: 'regen' }) : 'kW'}
                 </p>
               </div>
               <div className="text-center">
-                <p className="text-[9px] uppercase tracking-wider text-[#43D1AD]/70 mb-0.5">{t('vehicleStatus.outsideTemp')}</p>
-                <p className="text-xl font-bold text-[#43D1AD] tabular-nums leading-none">
+                <p className="text-[9px] uppercase tracking-wider text-[#34B49C]/70 mb-0.5">{t('vehicleStatus.outsideTemp')}</p>
+                <p className="text-xl font-bold text-[#34B49C] tabular-nums leading-none">
                   {(status as any).outsideTemp != null ? (status as any).outsideTemp.toFixed(1) : '—'}
                 </p>
-                <p className="text-[9px] text-[#43D1AD]/60 mt-0.5">°C</p>
+                <p className="text-[9px] text-[#34B49C]/60 mt-0.5">°C</p>
               </div>
             </div>
           </motion.div>
@@ -200,29 +200,29 @@ export function VehicleStatusCard({ vehicleId }: Props) {
             transition={{ duration: 0.22 }}
             className="overflow-hidden"
           >
-            <div className="stat-grid grid grid-cols-3 gap-2 p-3 rounded-xl bg-[#C2F54A]/8 border border-[#C2F54A]/20">
+            <div className="stat-grid grid grid-cols-3 gap-2 p-3 rounded-xl bg-[#A4D438]/8 border border-[#A4D438]/20">
               <div className="text-center">
-                <p className="text-[9px] uppercase tracking-wider text-[#C2F54A]/70 mb-0.5">SOC</p>
-                <p className="text-2xl font-bold text-[#C2F54A] tabular-nums leading-none">
+                <p className="text-[9px] uppercase tracking-wider text-[#A4D438]/70 mb-0.5">SOC</p>
+                <p className="text-2xl font-bold text-[#A4D438] tabular-nums leading-none">
                   {status.soc != null ? Math.round(status.soc) : '—'}
                 </p>
-                <p className="text-[9px] text-[#C2F54A]/60 mt-0.5">
+                <p className="text-[9px] text-[#A4D438]/60 mt-0.5">
                   {(status as any).chargeLimit != null ? `→ ${Math.round((status as any).chargeLimit)}%` : '%'}
                 </p>
               </div>
-              <div className="text-center border-x border-[#C2F54A]/15">
-                <p className="text-[9px] uppercase tracking-wider text-[#C2F54A]/70 mb-0.5">{t('vehicleStatus.power')}</p>
-                <p className="text-xl font-bold text-[#C2F54A] tabular-nums leading-none">
+              <div className="text-center border-x border-[#A4D438]/15">
+                <p className="text-[9px] uppercase tracking-wider text-[#A4D438]/70 mb-0.5">{t('vehicleStatus.power')}</p>
+                <p className="text-xl font-bold text-[#A4D438] tabular-nums leading-none">
                   {status.power != null ? `+${Math.abs(status.power).toFixed(1)}` : '—'}
                 </p>
-                <p className="text-[9px] text-[#C2F54A]/60 mt-0.5">kW</p>
+                <p className="text-[9px] text-[#A4D438]/60 mt-0.5">kW</p>
               </div>
               <div className="text-center">
-                <p className="text-[9px] uppercase tracking-wider text-[#C2F54A]/70 mb-0.5">{t('vehicleStatus.range')}</p>
-                <p className="text-xl font-bold text-[#43D1AD] tabular-nums leading-none">
+                <p className="text-[9px] uppercase tracking-wider text-[#A4D438]/70 mb-0.5">{t('vehicleStatus.range')}</p>
+                <p className="text-xl font-bold text-[#34B49C] tabular-nums leading-none">
                   {rangeKm != null ? Math.round(rangeKm) : '—'}
                 </p>
-                <p className="text-[9px] text-[#C2F54A]/60 mt-0.5">km</p>
+                <p className="text-[9px] text-[#A4D438]/60 mt-0.5">km</p>
               </div>
             </div>
           </motion.div>
@@ -252,11 +252,11 @@ function SocHero({ soc, rangeKm, chargeLimit, units, label, dimmed, t }: {
 }) {
   const pct = soc != null ? Math.round(soc) : null;
   const barColor = pct == null ? 'from-slate-500 to-slate-400'
-    : pct > 30 ? 'from-[#43D1AD] to-[#C2F54A]'
+    : pct > 30 ? 'from-[#34B49C] to-[#A4D438]'
     : pct > 10 ? 'from-amber-500 to-orange-400'
     : 'from-red-500 to-red-400';
   const iconColor = pct == null ? 'text-slate-400'
-    : pct > 30 ? 'text-[#C2F54A]'
+    : pct > 30 ? 'text-[#A4D438]'
     : pct > 10 ? 'text-amber-400'
     : 'text-red-400';
   const range = rangeKm != null
