@@ -108,7 +108,7 @@ export const useUIStore = create<UIState>()(
       setTempUnits: (tempUnits) =>
         set({ tempUnits }),
 
-      accent: 'blue',
+      accent: 'teal',
 
       setAccent: (accent) =>
         set({ accent }),

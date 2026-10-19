@@ -1,5 +1,6 @@
 'use client'
 
+import { useId } from 'react'
 import clsx from 'clsx'
 
 type Props = {
@@ -8,9 +9,11 @@ type Props = {
 }
 
 export function RoviqenMark({ size = 32, className }: Props) {
+  const uid = useId()
+  const gradId = `rq-g-${uid.replace(/:/g, '')}`
   const large = size > 24
   const strokeW = large ? 6.5 : 8
-  const strokeColor = large ? 'url(#rq-grad)' : '#2DD4BF'
+  const strokeColor = large ? `url(#${gradId})` : '#2DD4BF'
 
   return (
     <svg
@@ -24,7 +27,7 @@ export function RoviqenMark({ size = 32, className }: Props) {
     >
       {large && (
         <defs>
-          <linearGradient id="rq-grad" x1="14" y1="10" x2="52" y2="56" gradientUnits="userSpaceOnUse">
+          <linearGradient id={gradId} x1="14" y1="10" x2="52" y2="56" gradientUnits="userSpaceOnUse">
             <stop offset="0" stopColor="#2DD4BF" />
             <stop offset="1" stopColor="#B6F03C" />
           </linearGradient>

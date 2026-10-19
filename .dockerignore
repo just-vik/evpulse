@@ -35,3 +35,6 @@ coverage
 # docker
 Dockerfile
 docker-compose.yml
+
+# data — large runtime files, not needed in build context
+data/
