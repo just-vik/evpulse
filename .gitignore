@@ -83,3 +83,4 @@ infra/mqtt/passwd
 # never committed). Do not remove this line without first confirming the file no
 # longer holds a real secret.
 /.bashrc
+infra/opentopodata/data/

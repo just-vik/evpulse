@@ -257,6 +257,40 @@ services:
 
 
   # ──────────────────────────────────────────────
+  # ELEVATION (self-hosted OpenTopoData + SRTM 90m tiles for DE/NL)
+  # First-run setup: bash infra/opentopodata/download-srtm.sh
+  # Tiles live in ./infra/opentopodata/data/srtm/ (~90 MB, 32 tiles)
+  # ──────────────────────────────────────────────
+
+  opentopodata:
+    image: ghcr.io/ajnisbet/opentopodata:latest
+    container_name: tesla-opentopodata
+    restart: unless-stopped
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+
+    volumes:
+      - ./infra/opentopodata/config.yaml:/app/config.yaml:ro
+      - ./infra/opentopodata/data:/app/data:ro
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null 'http://127.0.0.1:5000/v1/srtm?locations=50.0,8.0' 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    networks:
+      - backend-net
+
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+
+  # ──────────────────────────────────────────────
   # DATABASE MIGRATION (one-shot, runs once before api/api-worker start)
   # Runs migrate.sh: prisma migrate deploy → timescale.sql. Exits after completion —
   # not a long-running service. See apps/api/migrate.sh for details/ordering rationale.
@@ -320,6 +354,7 @@ services:
       TESLA_AUDIENCE: "https://fleet-api.prd.eu.vn.cloud.tesla.com"
       LOG_LEVEL: "info"
       OSRM_URL: "http://tesla-osrm:5000"
+      ELEVATION_API_URL: "http://tesla-opentopodata:5000/v1/srtm"
       TESLA_BUDGET_MONTHLY_EUR: "50"
       TESLA_BUDGET_SOFT_PCT: "0.85"
       TESLA_BUDGET_ESTIMATED_EUR_PER_REQUEST: "0.004"
@@ -390,6 +425,7 @@ services:
       TESLA_AUDIENCE: "https://fleet-api.prd.eu.vn.cloud.tesla.com"
       LOG_LEVEL: "info"
       OSRM_URL: "http://tesla-osrm:5000"
+      ELEVATION_API_URL: "http://tesla-opentopodata:5000/v1/srtm"
       TESLA_BUDGET_MONTHLY_EUR: "50"
       TESLA_BUDGET_SOFT_PCT: "0.85"
       TESLA_BUDGET_ESTIMATED_EUR_PER_REQUEST: "0.004"

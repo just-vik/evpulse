@@ -1,0 +1,6 @@
+access_control_allow_origin: ""
+max_locations_per_request: 200
+
+datasets:
+  - name: srtm
+    path: data/srtm/
