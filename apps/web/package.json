@@ -10,7 +10,8 @@
     "lint": "next lint",
     "type-check": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.{ts,tsx,json,css,md}\"",
-    "format:check": "prettier --check \"src/**/*.{ts,tsx,json,css,md}\""
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,json,css,md}\"",
+    "check-palette": "bash ../../scripts/check-palette.sh"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.4",

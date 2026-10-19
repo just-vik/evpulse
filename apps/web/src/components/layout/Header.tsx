@@ -152,7 +152,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                     className={clsx(
                       'w-2 h-2 rounded-full shrink-0',
                       selectedVehicle?.status === 'active'
-                        ? 'bg-[#43D1AD]'
+                        ? 'bg-[#34B49C]'
                         : 'bg-slate-500'
                     )}
                   />
@@ -197,7 +197,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                         className={clsx(
                           'w-2 h-2 rounded-full',
                           v.status === 'active'
-                            ? 'bg-[#43D1AD]'
+                            ? 'bg-[#34B49C]'
                             : 'bg-slate-500'
                         )}
                       />

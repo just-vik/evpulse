@@ -207,7 +207,7 @@ function chargerTypeColor(type: string | null): string {
     case 'home_slow':
     case 'ac_home':
     case 'ac_slow':
-      return 'text-[#43D1AD] bg-[#43D1AD]/12 border-[#43D1AD]/25';
+      return 'text-[#34B49C] bg-[#34B49C]/12 border-[#34B49C]/25';
     default:
       return 'text-muted-foreground bg-[hsl(var(--secondary)/0.55)] border-[hsl(var(--border)/0.7)]';
   }
@@ -266,7 +266,7 @@ function ChargingAdvisor({
       if (savings > 0.5 && homeEnergy > 1) {
         result.push({
           icon: TrendingDown,
-          iconColor: '#43D1AD',
+          iconColor: '#34B49C',
           label: t('charging.smartAdvisorSavedVsSupercharger'),
           value: formatMoney(savings),
           sub: `${homeEnergy.toFixed(1)} kWh · ${homeDone.length} ${t('charging.sessionsCount').toLowerCase()}`,
@@ -332,10 +332,10 @@ function ChargingAdvisor({
         className="flex items-center justify-between w-full px-4 pt-4 pb-3 hover:bg-[hsl(var(--accent)/0.04)] transition-colors"
       >
         <div className="flex items-center gap-2">
-          <Sparkles size={14} className="text-[#C2F54A]" />
+          <Sparkles size={14} className="text-[#A4D438]" />
           <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{t('charging.smartAdvisorTitle')}</span>
           {!open && (
-            <span className="ml-1 rounded-full bg-[#C2F54A]/15 px-2 py-0.5 text-[10px] font-medium text-[#C2F54A]">
+            <span className="ml-1 rounded-full bg-[#A4D438]/15 px-2 py-0.5 text-[10px] font-medium text-[#A4D438]">
               {insights.length}
             </span>
           )}
@@ -423,7 +423,7 @@ function ManualCostEditor({
             className={`text-sm font-bold tabular-nums leading-tight ${
               session.endTime == null && displayCost == null
                 ? 'text-muted-foreground font-medium'
-                : 'text-[#C2F54A]'
+                : 'text-[#A4D438]'
             }`}
           >
             {displayCost != null ? fmtMoney(Number(displayCost)) : '—'}
@@ -465,7 +465,7 @@ function ManualCostEditor({
       <button
         onClick={save}
         disabled={saving}
-        className="text-[#43D1AD] hover:text-[#43D1AD]/80 transition-colors"
+        className="text-[#34B49C] hover:text-[#34B49C]/80 transition-colors"
       >
         {saving ? <Loader className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
       </button>
@@ -594,7 +594,7 @@ export default function ChargingPage() {
 
   // Charger type metadata for charts
   const CHARGER_STACKS = [
-    { key: 'home',   label: 'Home',         color: '#43D1AD', gradId: 'gHome' },
+    { key: 'home',   label: 'Home',         color: '#34B49C', gradId: 'gHome' },
     { key: 'sc',     label: 'Supercharger', color: '#f43f5e', gradId: 'gSC'   },
     { key: 'dc',     label: 'DC Fast',      color: '#f59e0b', gradId: 'gDC'   },
     { key: 'public', label: 'AC Public',    color: '#0ea5e9', gradId: 'gPub'  },
@@ -927,10 +927,10 @@ export default function ChargingPage() {
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         {([
-          { icon: <Zap size={18} />,   label: t('charging.totalEnergy30d'), value: `${totalEnergy.toFixed(1)}`, unit: 'kWh', color: 'text-[#43D1AD]',  bg: 'bg-[#43D1AD]/8 border-[#43D1AD]/15',   glow: 'shadow-[#43D1AD]/10', delta: periodDeltas?.totalEnergy,    invertColor: false },
+          { icon: <Zap size={18} />,   label: t('charging.totalEnergy30d'), value: `${totalEnergy.toFixed(1)}`, unit: 'kWh', color: 'text-[#34B49C]',  bg: 'bg-[#34B49C]/8 border-[#34B49C]/15',   glow: 'shadow-[#34B49C]/10', delta: periodDeltas?.totalEnergy,    invertColor: false },
           { icon: <Clock size={18} />, label: t('charging.sessionsCount'),   value: String(completedSessions.length), unit: '', color: 'text-[#3B82F6]', bg: 'bg-[#3B82F6]/8 border-[#3B82F6]/15', glow: 'shadow-[#3B82F6]/10', delta: periodDeltas?.count, invertColor: false },
           { icon: <Gauge size={18} />, label: t('charging.avgPerSession'),   value: completedSessions.length > 0 ? (totalEnergy / completedSessions.length).toFixed(1) : '—', unit: completedSessions.length > 0 ? 'kWh' : '', color: 'text-amber-400', bg: 'bg-amber-500/8 border-amber-500/15', glow: 'shadow-amber-500/10', delta: periodDeltas?.avgPerSession, invertColor: false },
-          { icon: <MetricBanknoteIcon size={18} className="shrink-0" />, label: t('charging.totalCost30d'), value: totalCost > 0 ? fmtMoney(totalCost) : '—', unit: '', unitPrefix: false, color: 'text-[#C2F54A]',  bg: 'bg-[#C2F54A]/8 border-[#C2F54A]/15',  glow: 'shadow-[#C2F54A]/10', delta: periodDeltas?.totalCost, invertColor: true },
+          { icon: <MetricBanknoteIcon size={18} className="shrink-0" />, label: t('charging.totalCost30d'), value: totalCost > 0 ? fmtMoney(totalCost) : '—', unit: '', unitPrefix: false, color: 'text-[#A4D438]',  bg: 'bg-[#A4D438]/8 border-[#A4D438]/15',  glow: 'shadow-[#A4D438]/10', delta: periodDeltas?.totalCost, invertColor: true },
         ] as const).map((s) => (
           <div key={s.label} className={`rounded-2xl border p-4 shadow-lg ${s.bg} ${s.glow}`}>
             <div className={`flex items-center gap-1.5 mb-2 ${s.color}`}>
@@ -954,7 +954,7 @@ export default function ChargingPage() {
         <ErrorState message={error} />
       ) : vehicles.length === 0 ? (
         <EmptyState
-          icon={<Zap size={28} className="text-[#43D1AD]" />}
+          icon={<Zap size={28} className="text-[#34B49C]" />}
           title={t('pages.vehicles.noVehicles')}
           description={t('charging.noVehiclesHint')}
           action={(
@@ -980,12 +980,12 @@ export default function ChargingPage() {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="rounded-2xl border border-[#C2F54A]/25 bg-[#C2F54A]/8 shadow-xl px-5 py-4 mb-6"
+              className="rounded-2xl border border-[#A4D438]/25 bg-[#A4D438]/8 shadow-xl px-5 py-4 mb-6"
             >
               <div className="flex items-center justify-between gap-4 flex-wrap">
                 <div className="flex items-center gap-2">
-                  <Zap size={16} className="text-[#C2F54A] animate-pulse" />
-                  <span className="text-sm font-semibold text-[#C2F54A]">{t('charging.active')}</span>
+                  <Zap size={16} className="text-[#A4D438] animate-pulse" />
+                  <span className="text-sm font-semibold text-[#A4D438]">{t('charging.active')}</span>
                 </div>
                 <div className="text-xs text-muted-foreground">
                   {formatTime(activeBaseSession.startTime, today, yesterday)}
@@ -1059,7 +1059,7 @@ export default function ChargingPage() {
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <div className="flex items-center gap-2 min-w-0">
                       {session.endTime ? (
-                        <CheckCircle size={14} className="text-[#43D1AD] shrink-0" />
+                        <CheckCircle size={14} className="text-[#34B49C] shrink-0" />
                       ) : (
                         <Zap size={14} className="text-amber-400 animate-pulse shrink-0" />
                       )}

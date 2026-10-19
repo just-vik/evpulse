@@ -8,12 +8,12 @@ export const ECHARTS_TOOLTIP_BORDER = '#22282A'
 export const ECHARTS_TEXT = '#F0F4ED'          /* Cloud White             */
 
 export const NEON = {
-  lime:    '#C2F54A',   /* Volt Lime   — primary accent  */
-  teal:    '#43D1AD',   /* Signal Teal — secondary       */
+  lime:    '#A4D438',   /* Volt Lime   — primary accent  */
+  teal:    '#34B49C',   /* Signal Teal — secondary       */
   blue:    '#3B82F6',   /* retained for cost/energy data */
   amber:   '#F59E0B',   /* retained for warnings         */
   /* legacy aliases — kept for backward compat with existing charts */
-  emerald: '#43D1AD',   /* → Signal Teal                 */
+  emerald: '#34B49C',   /* → Signal Teal                 */
   violet:  '#8B8FCC',   /* muted indigo — battery health */
   cyan:    '#22D3EE',
 }

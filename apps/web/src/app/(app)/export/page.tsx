@@ -37,7 +37,7 @@ const EXPORTS: ExportCard[] = [
   {
     entity: 'charging',
     icon: Database,
-    color: '#43D1AD',
+    color: '#34B49C',
     titleKey: 'export.charging.title',
     descKey: 'export.charging.desc',
     formats: ['csv', 'json'],

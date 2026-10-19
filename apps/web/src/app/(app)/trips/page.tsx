@@ -244,7 +244,7 @@ function LeafBadge({ pct }: { pct: number }) {
 
 function QDot({ score }: { score: number | null }) {
   if (score == null) return null
-  const cls = score >= 80 ? 'bg-[#43D1AD]' : score >= 50 ? 'bg-yellow-500' : 'bg-red-500'
+  const cls = score >= 80 ? 'bg-[#34B49C]' : score >= 50 ? 'bg-yellow-500' : 'bg-red-500'
   return <span className={`inline-block w-1.5 h-1.5 rounded-full ${cls} shrink-0`} title={`Q: ${score}`} />
 }
 
@@ -278,7 +278,7 @@ function TripDetails({ trip, avgEffWhkm }: { trip: ApiTrip; avgEffWhkm?: number 
       label: t('trips.efficiency', { defaultValue: 'Efficiency' }),
       value: `${efficiency.toFixed(0)} Wh/km`,
       sub: effPct != null ? `${effPct}%` : undefined,
-      subCls: effPct && effPct >= 110 ? 'text-[#43D1AD]' : effPct && effPct >= 90 ? 'text-[#43D1AD]' : 'text-amber-400',
+      subCls: effPct && effPct >= 110 ? 'text-[#34B49C]' : effPct && effPct >= 90 ? 'text-[#34B49C]' : 'text-amber-400',
     },
   ].filter(Boolean) as { label: string; value: string; sub?: string; subCls?: string }[]
 
@@ -301,7 +301,7 @@ function TripDetails({ trip, avgEffWhkm }: { trip: ApiTrip; avgEffWhkm?: number 
     trip.stats?.drivingStyle && {
       label: t('trips.styleLabel'),
       value: trip.stats.drivingStyle === 'eco' ? t('trips.drivingStyle_eco') : trip.stats.drivingStyle === 'normal' ? t('trips.drivingStyle_normal') : t('trips.drivingStyle_aggressive'),
-      cls: trip.stats.drivingStyle === 'eco' ? 'text-[#43D1AD]' : trip.stats.drivingStyle === 'normal' ? 'text-[#3B82F6]' : 'text-red-400',
+      cls: trip.stats.drivingStyle === 'eco' ? 'text-[#34B49C]' : trip.stats.drivingStyle === 'normal' ? 'text-[#3B82F6]' : 'text-red-400',
     },
   ].filter(Boolean) as { label: string; value: string; cls?: string }[]
 
@@ -434,8 +434,8 @@ function TripCard({
           <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
             {isLive && (
               <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#43D1AD] opacity-75" />
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#43D1AD]" />
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#34B49C] opacity-75" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#34B49C]" />
               </span>
             )}
             <QDot score={trip.qualityScore} />
@@ -451,7 +451,7 @@ function TripCard({
           <span className="text-[11px] text-muted-foreground tabular-nums">
             {formatTime(trip.startTime, i18n.language)}
             {isLive
-              ? <span className="text-[#43D1AD] ml-1">{t('status.driving')}</span>
+              ? <span className="text-[#34B49C] ml-1">{t('status.driving')}</span>
               : duration && <span className="text-muted-foreground"> • {duration}</span>
             }
           </span>
@@ -759,8 +759,8 @@ export default function TripsPage() {
       {/* Stats bar — colored metric cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
         {([
-          { icon: <TripIcon size={18} />,     label: t('trips.distance'),    value: totalDist.toFixed(1),            unit: t('common.km'),        color: 'text-[#43D1AD]',   bg: 'bg-[#43D1AD]/8 border-[#43D1AD]/15',    glow: 'shadow-[#43D1AD]/10', delta: periodDeltas?.totalDist,   invertColor: false },
-          { icon: <BoltIcon size={18} />,     label: t('trips.energy'),      value: totalEnergy.toFixed(1),          unit: t('common.kWh'),       color: 'text-[#43D1AD]',   bg: 'bg-[#43D1AD]/8 border-[#43D1AD]/15',    glow: 'shadow-[#43D1AD]/10', delta: periodDeltas?.totalEnergy, invertColor: false },
+          { icon: <TripIcon size={18} />,     label: t('trips.distance'),    value: totalDist.toFixed(1),            unit: t('common.km'),        color: 'text-[#34B49C]',   bg: 'bg-[#34B49C]/8 border-[#34B49C]/15',    glow: 'shadow-[#34B49C]/10', delta: periodDeltas?.totalDist,   invertColor: false },
+          { icon: <BoltIcon size={18} />,     label: t('trips.energy'),      value: totalEnergy.toFixed(1),          unit: t('common.kWh'),       color: 'text-[#34B49C]',   bg: 'bg-[#34B49C]/8 border-[#34B49C]/15',    glow: 'shadow-[#34B49C]/10', delta: periodDeltas?.totalEnergy, invertColor: false },
           { icon: <SpeedIcon size={18} />,    label: t('trips.efficiency'),  value: avgEffWhkm ? String(Math.round(avgEffWhkm)) : '—', unit: avgEffWhkm ? t('common.whPerKm') : '', color: 'text-amber-400',  bg: 'bg-amber-500/8 border-amber-500/15', glow: 'shadow-amber-500/10', delta: periodDeltas?.avgEffWhkm, invertColor: true },
           { icon: <AnalyticsIcon size={18} />, label: t('trips.trips'),      value: String(completed.length),        unit: '',                    color: 'text-[#3B82F6]',   bg: 'bg-[#3B82F6]/8 border-[#3B82F6]/15',    glow: 'shadow-[#3B82F6]/10', delta: periodDeltas?.count,       invertColor: false },
           { icon: <MetricBanknoteIcon size={18} className="shrink-0" />, label: t('trips.cost'), value: totalCost > 0 ? fmtMoney(totalCost) : '—', unit: '', unitPrefix: false, color: 'text-rose-400', bg: 'bg-rose-500/8 border-rose-500/15', glow: 'shadow-rose-500/10', delta: periodDeltas?.totalCost, invertColor: true, wideOnMobile: true },
@@ -861,7 +861,7 @@ export default function TripsPage() {
                   <ul className="mt-2 space-y-1.5 max-h-48 overflow-y-auto">
                     {sortedGaps.map((g) => {
                       const severity = g.lossPct > 5 ? 'high' : g.lossPct > 2 ? 'medium' : 'low'
-                      const badgeClass = severity === 'high' ? 'bg-red-500/15 text-red-400' : severity === 'medium' ? 'bg-amber-500/15 text-amber-400' : 'bg-[#43D1AD]/15 text-[#43D1AD]'
+                      const badgeClass = severity === 'high' ? 'bg-red-500/15 text-red-400' : severity === 'medium' ? 'bg-amber-500/15 text-amber-400' : 'bg-[#34B49C]/15 text-[#34B49C]'
                       return (
                         <li
                           key={g.key}
@@ -945,7 +945,7 @@ export default function TripsPage() {
             <div key={day}>
               {/* Day header */}
               <div className="flex items-center gap-3 mt-2 mb-3 py-2 px-1">
-                <span className="inline-block w-2 h-2 rounded-full bg-[#43D1AD] shrink-0" />
+                <span className="inline-block w-2 h-2 rounded-full bg-[#34B49C] shrink-0" />
                 <span className="text-sm font-semibold text-foreground">{label}</span>
                 <div className="flex-1 h-px bg-[hsl(var(--border)/0.45)]" />
                 <span className="text-xs text-muted-foreground tabular-nums">{dayDistance.toFixed(1)} {t('common.km')}</span>

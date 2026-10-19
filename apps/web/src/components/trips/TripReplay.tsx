@@ -67,7 +67,7 @@ function detectPOIs(points: TripPoint[]): POI[] {
 
 const POI_CONFIG: Record<POIType, { emoji: string; color: string }> = {
   slow:  { emoji: '🐢', color: '#f59e0b' },
-  regen: { emoji: '⚡', color: '#43D1AD' },
+  regen: { emoji: '⚡', color: '#34B49C' },
   boost: { emoji: '🚀', color: '#818cf8' },
 };
 
@@ -156,21 +156,21 @@ export function TripReplay({ tripId, onClose }: Props) {
             data: { type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: {} },
           });
           map.addLayer({ id: 'route-line', type: 'line', source: 'route',
-            paint: { 'line-color': '#43D1AD', 'line-width': 3, 'line-opacity': 0.45 } });
+            paint: { 'line-color': '#34B49C', 'line-width': 3, 'line-opacity': 0.45 } });
 
           map.addSource('progress', {
             type: 'geojson',
             data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] }, properties: {} },
           });
           map.addLayer({ id: 'progress-line', type: 'line', source: 'progress',
-            paint: { 'line-color': '#43D1AD', 'line-width': 4 } });
+            paint: { 'line-color': '#34B49C', 'line-width': 4 } });
 
           // Directional car marker (arrow pointing forward)
           const el = document.createElement('div') as HTMLDivElement;
           el.innerHTML = `<svg width="18" height="22" viewBox="0 0 18 22" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M9 0L18 18L9 14L0 18Z" fill="#43D1AD" stroke="white" stroke-width="1.5" stroke-linejoin="round"/>
+            <path d="M9 0L18 18L9 14L0 18Z" fill="#34B49C" stroke="white" stroke-width="1.5" stroke-linejoin="round"/>
           </svg>`;
-          el.style.cssText = 'width:18px;height:22px;transform-origin:9px 11px;filter:drop-shadow(0 0 5px rgba(67,209,173,0.7));';
+          el.style.cssText = 'width:18px;height:22px;transform-origin:9px 11px;filter:drop-shadow(0 0 5px rgba(52,180,156,0.7));';
           markerElRef.current = el;
 
           const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
