@@ -300,12 +300,16 @@
       "efficiency": "Effizienz"
     },
     "charging30d": {
-      "title": "Laden (30 Tage)",
+      "title": "Laden",
       "sessions": "Sitzungen",
-      "avgSession": "Ø / Sitzung"
+      "avgSession": "Ø / Sitzung",
+      "days": "Tage"
+    },
+    "weekSummary": {
+      "title": "Diese Woche"
     },
     "cost30d": {
-      "title": "Kosten (30 Tage)",
+      "title": "Kosten",
       "energy": "Energie",
       "costPerKm": "Kosten / km",
       "price": "Preis"

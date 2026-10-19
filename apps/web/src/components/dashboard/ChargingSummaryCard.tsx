@@ -12,10 +12,10 @@ interface Props {
 
 export function ChargingSummaryCard({ vehicleId }: Props) {
   const { chargingSummary, isLoading } = useChargingSummary(vehicleId);
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const now = new Date();
-  const monthName = now.toLocaleDateString(undefined, { month: 'long' });
+  const monthName = now.toLocaleDateString(i18n.language, { month: 'long' });
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
 
   return (

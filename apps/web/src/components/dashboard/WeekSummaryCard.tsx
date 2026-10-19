@@ -10,7 +10,7 @@ interface Props {
   vehicleId: string | null;
 }
 
-function getWeekRange(): { label: string; mondayDate: Date } {
+function getWeekRange(lang: string): { label: string; mondayDate: Date } {
   const now = new Date();
   const day = now.getDay();
   const diff = day === 0 ? -6 : 1 - day;
@@ -19,17 +19,17 @@ function getWeekRange(): { label: string; mondayDate: Date } {
   monday.setHours(0, 0, 0, 0);
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
-  const fmt = (d: Date) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const fmt = (d: Date) => d.toLocaleDateString(lang, { month: 'short', day: 'numeric' });
   return { label: `${fmt(monday)} – ${fmt(sunday)}`, mondayDate: monday };
 }
 
 export function WeekSummaryCard({ vehicleId }: Props) {
   const { tripsThisWeek, isLoading: tripsLoading } = useTripsThisWeek(vehicleId);
   const { chargingThisWeek, isLoading: chargeLoading } = useChargingThisWeek(vehicleId);
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const isLoading = tripsLoading || chargeLoading;
 
-  const { label } = getWeekRange();
+  const { label } = getWeekRange(i18n.language);
 
   const km      = tripsThisWeek?.distanceKm ?? 0;
   const trips   = tripsThisWeek?.tripCount ?? 0;

@@ -14,11 +14,11 @@ interface Props {
 export function CostAnalyticsCard({ vehicleId }: Props) {
   // No rate override — let the API resolve from settings → default 0.25
   const { costSummary, isLoading } = useCostSummary(vehicleId);
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { formatMoney, formatPerKm } = useCurrency();
 
   const now = new Date();
-  const monthName = now.toLocaleDateString(undefined, { month: 'long' });
+  const monthName = now.toLocaleDateString(i18n.language, { month: 'long' });
 
   return (
     <BaseCard className="h-full">
