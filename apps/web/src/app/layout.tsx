@@ -14,13 +14,15 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: '/favicon.ico', sizes: '16x16 32x32 48x48', type: 'image/x-icon' },
-      { url: '/icons/favicon-32.png', sizes: '32x32', type: 'image/png' },
-      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-      { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+      { url: '/favicon.ico',           sizes: '16x16 32x32 48x48', type: 'image/x-icon' },
+      { url: '/icons/favicon-32.png',  sizes: '32x32',  type: 'image/png' },
+      { url: '/icons/icon-192.png',    sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-512.png',    sizes: '512x512', type: 'image/png' },
     ],
     shortcut: '/favicon.ico',
-    apple: '/icons/apple-touch-icon.png',
+    apple: [
+      { url: '/icons/apple-touch-icon.png', sizes: '180x180' },
+    ],
   },
 }
 
@@ -35,11 +37,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <meta name="theme-color" content="#C2F54A" />
+        {/* Theme color: dark default, light override for light-scheme browsers */}
+        <meta name="theme-color" content="#0C0F11" media="(prefers-color-scheme: dark)" />
+        <meta name="theme-color" content="#F1F5EE" media="(prefers-color-scheme: light)" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        {/* Apple touch icons — dark is default, light for iOS 18 light mode */}
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" sizes="180x180" />
+        {/* Favicon SVG — modern browsers pick this up automatically */}
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
       </head>
 
       <body suppressHydrationWarning>
