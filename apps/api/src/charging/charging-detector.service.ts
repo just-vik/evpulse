@@ -653,7 +653,12 @@ export class ChargingDetectorService {
     const isGhost    =
       roundedEnergy < 0.05 ||                              // Rule A: < 50 Wh — never real
       (durationMs < 2 * 60_000 && socDelta < 0.5 && roundedEnergy < 0.1) || // Rule B
-      (socDelta < -1 && roundedEnergy < 5);                // Rule C: SOC dropped → not charging (regen/drive ghost)
+      // Rule C: SOC dropped AND energy is small → regen spike or drive-then-park false positive.
+      // Duration guard: late-detected real sessions (car arrived mid-charge) accumulate
+      // a small chargeEnergyAdded delta — the SOC drop comes from subsequent driving, not from
+      // the session itself.  Sessions > 30 min have already lived through PAUSE_GRACE_MS and any
+      // brief regen event; they are almost certainly real, so we keep them rather than delete.
+      (socDelta < -1 && roundedEnergy < 5 && durationMs < 30 * 60_000);
     if (isGhost) {
       this.logger.warn(
         `[Charging] Ghost session discarded for ${vehicleId} ` +
