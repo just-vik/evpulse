@@ -781,9 +781,15 @@ export class ChargingDetectorService {
     if (vehicleId && lat != null && lng != null) {
       const isHome = await this.isAtHomeLocation(vehicleId, lat, lng);
       if (isHome) return 'home_wall';
+      // GPS confirms vehicle is NOT at registered home → public or workplace AC charger.
+      // Returning ac_city (already in THIRD_PARTY_TYPES) applies thirdPartyRate and
+      // allows ChargingSyncService to attempt Tesla Billing API matching.
+      return 'ac_city';
     }
 
-    // Default: assume home wall-box (most common for this power range)
+    // No GPS: cannot determine location — conservative default keeps home tariff
+    // rather than charging the user a higher third-party rate when the charger
+    // might legitimately be a home wall-box.
     return 'home_wall';
   }
 
