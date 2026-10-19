@@ -183,7 +183,7 @@ export function QuickActions({ vehicleId }: Props) {
       label: t('dailySummary.distance', { defaultValue: 'Distance' }),
       value: tripsToday ? tripsToday.distanceKm.toFixed(1) : '0',
       unit: 'km',
-      color: '#2DD4BF',
+      color: '#26B89C',
     },
     {
       icon: BoltMetricIcon,
@@ -197,14 +197,14 @@ export function QuickActions({ vehicleId }: Props) {
       label: t('dailySummary.charged', { defaultValue: 'Charged' }),
       value: chargingSummary ? chargingSummary.energyKwh.toFixed(1) : '0',
       unit: 'kWh',
-      color: '#B6F03C',
+      color: '#8CBC38',
     },
     {
       icon: LeafMetricIcon,
       label: t('dailySummary.efficiency', { defaultValue: 'Eff.' }),
       value: tripsToday?.efficiencyWhKm != null ? String(Math.round(tripsToday.efficiencyWhKm)) : '—',
       unit: tripsToday?.efficiencyWhKm != null ? 'Wh/km' : '',
-      color: '#4ADE80',
+      color: '#3CBA72',
     },
   ];
 

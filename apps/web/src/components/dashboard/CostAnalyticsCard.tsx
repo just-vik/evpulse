@@ -27,12 +27,12 @@ export function CostAnalyticsCard({ vehicleId }: Props) {
           {isLoading ? (
             <div className="h-8 w-24 rounded-lg bg-[hsl(var(--muted)/0.5)] animate-pulse" />
           ) : (
-            <h3 className="text-2xl font-bold text-[#C2F54A] tracking-tight tabular-nums">
+            <h3 className="text-2xl font-bold text-[#A4D438] tracking-tight tabular-nums">
               {costSummary ? formatMoney(costSummary.totalCost) : '—'}
             </h3>
           )}
         </div>
-        <div className="w-11 h-11 rounded-[12px] bg-[#B6F03C]/10 flex items-center justify-center text-[#B6F03C] shrink-0">
+        <div className="w-11 h-11 rounded-[12px] bg-[#8CBC38]/10 flex items-center justify-center text-[#8CBC38] shrink-0">
           <EuroIcon size={22} />
         </div>
       </div>

@@ -63,7 +63,7 @@ export function VampireDrainWidget({ vehicleId }: Props) {
 
   const colorMap = {
     none:   { text: 'text-muted-foreground',  iconBg: 'bg-[hsl(var(--secondary)/0.5)]', bar: 'bg-muted-foreground/30' },
-    low:    { text: 'text-[#43D1AD]',         iconBg: 'bg-[#43D1AD]/15',                bar: 'bg-[#43D1AD]'          },
+    low:    { text: 'text-[#34B49C]',         iconBg: 'bg-[#34B49C]/15',                bar: 'bg-[#34B49C]'          },
     medium: { text: 'text-amber-400',         iconBg: 'bg-amber-500/15',                bar: 'bg-amber-400'          },
     high:   { text: 'text-red-400',           iconBg: 'bg-red-500/15',                  bar: 'bg-red-400'            },
   };

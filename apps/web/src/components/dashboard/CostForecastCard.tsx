@@ -32,12 +32,12 @@ export function CostForecastCard({ vehicleId }: Props) {
           {isLoading ? (
             <div className="h-8 w-24 rounded-lg bg-[hsl(var(--muted)/0.5)] animate-pulse" />
           ) : (
-            <h3 className="text-2xl font-bold text-[#43D1AD] tracking-tight tabular-nums">
+            <h3 className="text-2xl font-bold text-[#34B49C] tracking-tight tabular-nums">
               {forecast ? `${formatMoney(forecast.monthlyCost)}/mo` : '—'}
             </h3>
           )}
         </div>
-        <div className="w-11 h-11 rounded-[12px] bg-[#2DD4BF]/10 flex items-center justify-center text-[#2DD4BF] shrink-0">
+        <div className="w-11 h-11 rounded-[12px] bg-[#26B89C]/10 flex items-center justify-center text-[#26B89C] shrink-0">
           <CalendarMetricIcon size={22} />
         </div>
       </div>

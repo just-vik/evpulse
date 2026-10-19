@@ -93,7 +93,7 @@ const CMD_GROUPS: CmdGroup[] = [
     // Climate On/Off, Overheat On/Off — 4 items → clean 2×2 grid
     labelKey: 'vehicleDetail.commandGroups.climate',
     gridClass: 'grid-cols-2',
-    color: '#06b6d4',
+    color: '#26B89C',
     cmds: [
       { key: 'climate-on',   icon: Wind,        labelKey: 'quickActions.climateOn',   cmd: 'climate',             params: { action: 'start' }, loadingKey: 'climate-on'   },
       { key: 'climate-off',  icon: Thermometer, labelKey: 'quickActions.climateOff',  cmd: 'climate',             params: { action: 'stop'  }, loadingKey: 'climate-off'  },
@@ -105,7 +105,7 @@ const CMD_GROUPS: CmdGroup[] = [
     // Start/Stop Charging — 2 items → clean 1×2 grid
     labelKey: 'vehicleDetail.commandGroups.charging',
     gridClass: 'grid-cols-2',
-    color: '#43D1AD',
+    color: '#34B49C',
     cmds: [
       { key: 'start-charging', icon: Plug,   labelKey: 'quickActions.startCharge', cmd: 'start-charging' },
       { key: 'stop-charging',  icon: ZapOff, labelKey: 'quickActions.stopCharge',  cmd: 'stop-charging'  },
@@ -213,7 +213,7 @@ function LiveMiniChart({ points }: { points: LivePoint[] }) {
     if (validPower.length >= 2)
       drawLine(powers, 'rgba(245,158,11,0.7)', Math.min(...validPower, 0), Math.max(...validPower, 1))
     if (validSoc.length >= 2)
-      drawLine(socs, 'rgba(52,211,153,0.65)', Math.min(...validSoc) - 2, Math.max(...validSoc) + 2)
+      drawLine(socs, 'rgba(52,180,156,0.65)', Math.min(...validSoc) - 2, Math.max(...validSoc) + 2)
   }, [points])
 
   if (points.length < 2) return null
@@ -222,7 +222,7 @@ function LiveMiniChart({ points }: { points: LivePoint[] }) {
   const LEGEND = [
     { label: 'Spd', value: lastPt.spd != null ? `${Math.round(lastPt.spd)} km/h` : '—', color: '#8B8FCC' },
     { label: 'Pwr', value: lastPt.pwr != null ? `${lastPt.pwr.toFixed(1)} kW` : '—',   color: '#f59e0b' },
-    { label: 'SoC', value: lastPt.soc != null ? `${Math.round(lastPt.soc)}%` : '—',     color: '#43D1AD' },
+    { label: 'SoC', value: lastPt.soc != null ? `${Math.round(lastPt.soc)}%` : '—',     color: '#34B49C' },
   ]
 
   return (
@@ -403,7 +403,7 @@ function Toast({ toast, onDismiss }: { toast: ToastState; onDismiss: () => void 
           className={`fixed bottom-20 lg:bottom-6 left-1/2 -translate-x-1/2 z-50
             flex items-center gap-2.5 px-4 py-3 rounded-2xl shadow-2xl border text-sm font-medium whitespace-nowrap
             ${toast.type === 'success'
-              ? 'bg-[#43D1AD]/10 border-[#43D1AD]/25 text-[#43D1AD]'
+              ? 'bg-[#34B49C]/10 border-[#34B49C]/25 text-[#34B49C]'
               : 'bg-red-950/95 border-red-500/25 text-red-300'}`}
         >
           {toast.type === 'success' ? <CheckCircle2 size={15} /> : <XCircle size={15} />}
@@ -760,8 +760,8 @@ export default function VehicleDetailPage() {
           <Stat icon={Gauge}       label={t('vehicleStatus.speed')}       value={telemetry?.speed}                                                             unit="km/h" color="#8B8FCC" />
           <Stat icon={Power}       label={t('vehicleStatus.power')}       value={telemetry?.power != null ? telemetry.power.toFixed(1) : undefined}            unit="kW"   color="#f59e0b" />
           <Stat icon={Thermometer} label={t('vehicleStatus.insideTemp')}  value={telemetry?.insideTemp != null ? telemetry.insideTemp.toFixed(1) : undefined}  unit="°C"   color="#ef4444" />
-          <Stat icon={Thermometer} label={t('vehicleStatus.outsideTemp')} value={telemetry?.outsideTemp != null ? telemetry.outsideTemp.toFixed(1) : undefined} unit="°C"   color="#06b6d4" />
-          <Stat icon={MapPin}      label={t('vehicleStatus.odometer')}    value={telemetry?.odometer != null ? Math.round(+telemetry.odometer).toLocaleString() : undefined} unit="km" color="#43D1AD" />
+          <Stat icon={Thermometer} label={t('vehicleStatus.outsideTemp')} value={telemetry?.outsideTemp != null ? telemetry.outsideTemp.toFixed(1) : undefined} unit="°C"   color="#26B89C" />
+          <Stat icon={MapPin}      label={t('vehicleStatus.odometer')}    value={telemetry?.odometer != null ? Math.round(+telemetry.odometer).toLocaleString() : undefined} unit="km" color="#34B49C" />
           {telemetry?.batteryTemp != null && (
             <Stat icon={Battery}   label={t('vehicleStatus.batteryTemp')} value={telemetry.batteryTemp.toFixed(1)} unit="°C" color="#3b82f6" />
           )}
@@ -930,7 +930,7 @@ export default function VehicleDetailPage() {
                         return (
                           <div key={h.id} className="flex items-center justify-between px-4 py-2.5 gap-3">
                             <div className="flex items-center gap-2.5 min-w-0">
-                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${h.status === 'success' ? 'bg-[#43D1AD]' : 'bg-red-400'}`} />
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${h.status === 'success' ? 'bg-[#34B49C]' : 'bg-red-400'}`} />
                               <span className="text-xs font-medium text-foreground truncate">{label}</span>
                               {h.error && <span className="text-xs text-red-400/80 truncate">{h.error.slice(0, 50)}</span>}
                             </div>
@@ -976,26 +976,26 @@ export default function VehicleDetailPage() {
                 <div className="px-4 pb-4 space-y-3 border-t border-[hsl(var(--border)/0.4)] pt-4">
 
                   {/* Charge limit */}
-                  <div className="rounded-xl border border-[hsl(var(--border)/0.4)] p-3 space-y-2.5" style={{ background: '#43D1AD10' }}>
+                  <div className="rounded-xl border border-[hsl(var(--border)/0.4)] p-3 space-y-2.5" style={{ background: '#34B49C10' }}>
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-[#43D1AD]">{t('vehicleDetail.advanced.chargeLimit')}</span>
+                      <span className="text-xs font-semibold text-[#34B49C]">{t('vehicleDetail.advanced.chargeLimit')}</span>
                       <span className="text-sm font-bold text-foreground tabular-nums">{chargeLimit}%</span>
                     </div>
                     <div className="flex items-center gap-3">
                       <input
                         type="range" min={50} max={100} step={5} value={chargeLimit}
                         onChange={e => setChargeLimit(+e.target.value)}
-                        className="flex-1 h-1.5 cursor-pointer accent-[#43D1AD]"
+                        className="flex-1 h-1.5 cursor-pointer accent-[#34B49C]"
                         disabled={isAsleep}
                       />
                       <button
                         onClick={() => sendCmd('charge-limit', { percent: chargeLimit }, 'charge-limit')}
                         disabled={isAsleep || cmdLoading === 'charge-limit'}
                         className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-                        style={{ background: '#43D1AD20', color: '#43D1AD' }}
+                        style={{ background: '#34B49C20', color: '#34B49C' }}
                       >
                         {cmdLoading === 'charge-limit'
-                          ? <span className="w-3.5 h-3.5 border border-t-transparent border-[#43D1AD] rounded-full animate-spin inline-block" />
+                          ? <span className="w-3.5 h-3.5 border border-t-transparent border-[#34B49C] rounded-full animate-spin inline-block" />
                           : t('vehicleDetail.advanced.apply')}
                       </button>
                     </div>

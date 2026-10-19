@@ -24,13 +24,13 @@ export function ChargingSummaryCard({ vehicleId }: Props) {
           {isLoading ? (
             <div className="h-8 w-28 rounded-lg bg-[hsl(var(--muted)/0.5)] animate-pulse" />
           ) : (
-            <h3 className="text-2xl font-bold text-[#43D1AD] tracking-tight tabular-nums">
+            <h3 className="text-2xl font-bold text-[#34B49C] tracking-tight tabular-nums">
               {chargingSummary ? `${chargingSummary.energyKwh.toFixed(1)} kWh` : '0.0 kWh'}
             </h3>
           )}
           <p className="text-[10px] text-muted-foreground/50 mt-0.5">{t('cards.charging30d.period', { defaultValue: 'за 30 дней' })}</p>
         </div>
-        <div className="w-11 h-11 rounded-[12px] bg-[#B6F03C]/10 flex items-center justify-center text-[#B6F03C] shrink-0">
+        <div className="w-11 h-11 rounded-[12px] bg-[#8CBC38]/10 flex items-center justify-center text-[#8CBC38] shrink-0">
           <PlugIcon size={22} />
         </div>
       </div>

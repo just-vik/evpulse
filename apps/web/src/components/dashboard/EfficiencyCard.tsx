@@ -34,7 +34,7 @@ export function EfficiencyCard({ vehicleId }: Props) {
           {isLoading ? (
             <div className="h-8 w-28 rounded-lg bg-[hsl(var(--muted)/0.5)] animate-pulse" />
           ) : (
-            <h3 className="text-2xl font-bold text-[#43D1AD] tracking-tight tabular-nums">
+            <h3 className="text-2xl font-bold text-[#34B49C] tracking-tight tabular-nums">
               {displayValue ?? '—'}
             </h3>
           )}
@@ -44,13 +44,13 @@ export function EfficiencyCard({ vehicleId }: Props) {
           {whKm != null && (
             <button
               onClick={() => setUnit(u => u === 'whkm' ? 'kwh100' : 'whkm')}
-              className="text-[10px] px-2 py-0.5 rounded-md bg-[#43D1AD]/15 text-[#43D1AD] hover:bg-[#43D1AD]/25 transition-colors font-medium tabular-nums leading-5"
+              className="text-[10px] px-2 py-0.5 rounded-md bg-[#34B49C]/15 text-[#34B49C] hover:bg-[#34B49C]/25 transition-colors font-medium tabular-nums leading-5"
               title={unit === 'whkm' ? 'Switch to kWh/100km' : 'Switch to Wh/km'}
             >
               {unit === 'whkm' ? 'kWh/100' : 'Wh/km'}
             </button>
           )}
-          <div className="w-11 h-11 rounded-[12px] bg-[#4ADE80]/10 flex items-center justify-center text-[#4ADE80] shrink-0">
+          <div className="w-11 h-11 rounded-[12px] bg-[#3CBA72]/10 flex items-center justify-center text-[#3CBA72] shrink-0">
             <LeafMetricIcon size={22} />
           </div>
         </div>

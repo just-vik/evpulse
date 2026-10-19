@@ -36,7 +36,7 @@
   --destructive-foreground: 100 24% 94%;
   --border: 200 11% 18%;             /* subtle divider between surfaces  */
   --input: 195 11% 15%;
-  --ring: 118 85% 80%;               /* Volt Lime focus ring             */
+  --ring: 118 65% 70%;               /* Volt Lime focus ring             */
   --radius: 0.5rem;
 
   /* ── OKLCH Semantic Surfaces ─── */
@@ -53,8 +53,8 @@
   --s-overlay:    oklch(0%    0     0 / 0.60); /* modal backdrop          */
 
   /* ── Named brand vars ─── */
-  --volt-lime:    #C2F54A;           /* Volt Lime  — CTAs, highlights    */
-  --signal-teal:  #43D1AD;           /* Signal Teal — secondary accent   */
+  --volt-lime:    #A4D438;           /* Volt Lime  — CTAs, highlights    */
+  --signal-teal:  #34B49C;           /* Signal Teal — secondary accent   */
   --cloud-white:  #F0F4ED;           /* Cloud White — primary text       */
 
   /* ── Accent OKLCH system ──

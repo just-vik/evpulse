@@ -47,7 +47,7 @@ export function BatteryHealthCard({ vehicleId }: Props) {
           <div className="flex items-center gap-1.5 mb-1">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{titleKey}</p>
             {isHighConf && (
-              <span className="text-[10px] px-1 py-0.5 rounded bg-[#43D1AD]/15 text-[#43D1AD] font-medium">HIGH</span>
+              <span className="text-[10px] px-1 py-0.5 rounded bg-[#34B49C]/15 text-[#34B49C] font-medium">HIGH</span>
             )}
             {isMedConf && (
               <span className="text-[10px] px-1 py-0.5 rounded bg-amber-500/15 text-amber-400 font-medium">MED</span>
@@ -56,12 +56,12 @@ export function BatteryHealthCard({ vehicleId }: Props) {
           {isLoading ? (
             <div className="h-8 w-20 rounded-lg bg-[hsl(var(--muted)/0.5)] animate-pulse" />
           ) : (
-            <h3 className="text-2xl font-bold text-[#C2F54A] tracking-tight tabular-nums">
+            <h3 className="text-2xl font-bold text-[#A4D438] tracking-tight tabular-nums">
               {sohLabel()}
             </h3>
           )}
         </div>
-        <div className="w-11 h-11 rounded-[12px] bg-[#B6F03C]/10 flex items-center justify-center text-[#B6F03C] shrink-0">
+        <div className="w-11 h-11 rounded-[12px] bg-[#8CBC38]/10 flex items-center justify-center text-[#8CBC38] shrink-0">
           <SohIcon size={22} />
         </div>
       </div>

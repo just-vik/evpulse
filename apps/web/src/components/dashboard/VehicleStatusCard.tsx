@@ -25,18 +25,18 @@ const STATE_CONFIG: Record<string, {
   border: string;
   text: string;
 }> = {
-  driving:  { icon: DrivingIcon,        bg: 'bg-[#2DD4BF]/15',  border: 'border-[#2DD4BF]/30',  text: 'text-[#2DD4BF]'  },
-  stopped:  { icon: DrivingIcon,        bg: 'bg-[#2DD4BF]/10',  border: 'border-[#2DD4BF]/20',  text: 'text-[#2DD4BF]'  },
-  charging: { icon: ChargingStatusIcon, bg: 'bg-[#B6F03C]/10',  border: 'border-[#B6F03C]/25',  text: 'text-[#B6F03C]'  },
+  driving:  { icon: DrivingIcon,        bg: 'bg-[#26B89C]/12',  border: 'border-[#26B89C]/25',  text: 'text-[#26B89C]'  },
+  stopped:  { icon: DrivingIcon,        bg: 'bg-[#26B89C]/8',   border: 'border-[#26B89C]/18',  text: 'text-[#26B89C]'  },
+  charging: { icon: ChargingStatusIcon, bg: 'bg-[#8CBC38]/10',  border: 'border-[#8CBC38]/22',  text: 'text-[#8CBC38]'  },
   parked:   { icon: SleepIcon,          bg: 'bg-[#818CF8]/10',  border: 'border-[#818CF8]/20',  text: 'text-[#818CF8]'  },
   sleeping: { icon: SleepIcon,          bg: 'bg-[#818CF8]/10',  border: 'border-[#818CF8]/20',  text: 'text-[#818CF8]'  },
   waking:   { icon: DrivingIcon,        bg: 'bg-amber-500/10',  border: 'border-amber-500/25',  text: 'text-amber-400'  },
-  online:   { icon: OnlineIcon,         bg: 'bg-[#4ADE80]/10',  border: 'border-[#4ADE80]/25',  text: 'text-[#6EE7A0]'  },
+  online:   { icon: OnlineIcon,         bg: 'bg-[#3CBA72]/10',  border: 'border-[#3CBA72]/22',  text: 'text-[#52D48A]'  },
   offline:  { icon: OfflineIcon,        bg: 'bg-[#8A979E]/10',  border: 'border-[#8A979E]/20',  text: 'text-[#AEB9BE]'  },
   updating: { icon: SoftwareUpdateIcon, bg: 'bg-[#60A5FA]/10',  border: 'border-[#60A5FA]/25',  text: 'text-[#8DC0FC]'  },
 };
 
-const DEFAULT_STATE_CFG = { icon: OnlineIcon, bg: 'bg-[#4ADE80]/10', border: 'border-[#4ADE80]/20', text: 'text-[#6EE7A0]' };
+const DEFAULT_STATE_CFG = { icon: OnlineIcon, bg: 'bg-[#3CBA72]/10', border: 'border-[#3CBA72]/20', text: 'text-[#52D48A]' };
 
 export function VehicleStatusCard({ vehicleId }: Props) {
   const { status, isLoading, refresh } = useVehicleStatus(vehicleId);
@@ -136,7 +136,7 @@ export function VehicleStatusCard({ vehicleId }: Props) {
           </button>
           {/* Animated state icon */}
           <motion.div
-            className={`w-9 h-9 rounded-xl flex items-center justify-center ${cfg.bg} border ${cfg.border}`}
+            className={`w-11 h-11 rounded-[12px] flex items-center justify-center ${cfg.bg} border ${cfg.border}`}
             animate={
               stateKey === 'driving'  ? { y: [0, -2, 0] } :
               stateKey === 'charging' ? { scale: [1, 1.12, 1] } :
