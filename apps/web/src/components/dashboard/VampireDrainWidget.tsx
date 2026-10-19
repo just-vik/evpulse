@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { VampireIcon } from '@/components/icons/NavIcons';
+import { DrainIcon } from '@/components/icons/StatusIcons';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/stores/authStore';
 import { apiClient } from '@/lib/api';
@@ -92,8 +92,8 @@ export function VampireDrainWidget({ vehicleId }: Props) {
             )}
           </div>
         </div>
-        <div className={`w-9 h-9 rounded-xl ${c.iconBg} flex items-center justify-center shrink-0`}>
-          <VampireIcon size={20} className={c.text} />
+        <div className={`w-11 h-11 rounded-[12px] ${c.iconBg} flex items-center justify-center shrink-0`}>
+          <DrainIcon size={22} className={c.text} />
         </div>
       </div>
 

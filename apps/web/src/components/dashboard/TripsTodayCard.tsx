@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { TripIcon } from '@/components/icons/NavIcons';
+import { DistanceIcon } from '@/components/icons/StatusIcons';
 import { useTranslation } from 'react-i18next';
 import { useTripsToday } from '@/hooks/useVehicleAggregates';
 import { BaseCard } from '@/shared/ui';
@@ -30,8 +30,8 @@ export function TripsTodayCard({ vehicleId }: Props) {
           )}
           <p className="text-[10px] text-muted-foreground/50 mt-0.5">{t('cards.tripsToday.period', { defaultValue: 'сегодня' })}</p>
         </div>
-        <div className="w-9 h-9 rounded-xl bg-[#43D1AD]/15 flex items-center justify-center text-[#43D1AD] shrink-0">
-          <TripIcon size={20} />
+        <div className="w-11 h-11 rounded-[12px] bg-[#2DD4BF]/10 flex items-center justify-center text-[#2DD4BF] shrink-0">
+          <DistanceIcon size={22} />
         </div>
       </div>
 

@@ -3,7 +3,8 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ZapOff, Lock, Unlock, Volume2, RefreshCw } from 'lucide-react';
-import { PowerOnIcon, ChargingIcon, ClimateIcon, TripIcon, BoltIcon, LeafIcon } from '@/components/icons/NavIcons';
+import { PowerOnIcon, ChargingIcon, ClimateIcon } from '@/components/icons/NavIcons';
+import { DistanceIcon, BoltMetricIcon, ChargedIcon, LeafMetricIcon, StaleIcon } from '@/components/icons/StatusIcons';
 import { useTranslation } from 'react-i18next';
 import { useVehicleStatus } from '@/hooks/useVehicleStatus';
 import { useVehicleCommands } from '@/hooks/useVehicleCommands';
@@ -178,32 +179,32 @@ export function QuickActions({ vehicleId }: Props) {
 
   const todayKpis = [
     {
-      icon: TripIcon,
+      icon: DistanceIcon,
       label: t('dailySummary.distance', { defaultValue: 'Distance' }),
       value: tripsToday ? tripsToday.distanceKm.toFixed(1) : '0',
       unit: 'km',
-      color: '#43D1AD',
+      color: '#2DD4BF',
     },
     {
-      icon: BoltIcon,
+      icon: BoltMetricIcon,
       label: t('dailySummary.energyUsed', { defaultValue: 'Used' }),
       value: tripsToday ? tripsToday.energyKwh.toFixed(1) : '0',
       unit: 'kWh',
       color: '#3B82F6',
     },
     {
-      icon: ChargingIcon,
+      icon: ChargedIcon,
       label: t('dailySummary.charged', { defaultValue: 'Charged' }),
       value: chargingSummary ? chargingSummary.energyKwh.toFixed(1) : '0',
       unit: 'kWh',
-      color: '#C2F54A',
+      color: '#B6F03C',
     },
     {
-      icon: LeafIcon,
+      icon: LeafMetricIcon,
       label: t('dailySummary.efficiency', { defaultValue: 'Eff.' }),
       value: tripsToday?.efficiencyWhKm != null ? String(Math.round(tripsToday.efficiencyWhKm)) : '—',
       unit: tripsToday?.efficiencyWhKm != null ? 'Wh/km' : '',
-      color: '#43D1AD',
+      color: '#4ADE80',
     },
   ];
 
@@ -216,7 +217,7 @@ export function QuickActions({ vehicleId }: Props) {
 
       {controlsDisabled && (
         <p className="text-2xs text-amber-600 dark:text-amber-400 mb-2 flex items-center gap-1">
-          <span>⚠</span> {t('quickActions.controlsDisabled')}
+          <StaleIcon size={12} className="shrink-0" /> {t('quickActions.controlsDisabled')}
         </p>
       )}
 

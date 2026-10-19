@@ -4,7 +4,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCostSummary } from '@/hooks/useVehicleAggregates';
 import { useCurrency } from '@/hooks/useCurrency';
-import { CurrencyGlyph } from '@/components/currency/CurrencyGlyph';
+import { EuroIcon } from '@/components/icons/StatusIcons';
 import { BaseCard } from '@/shared/ui';
 
 interface Props {
@@ -32,8 +32,8 @@ export function CostAnalyticsCard({ vehicleId }: Props) {
             </h3>
           )}
         </div>
-        <div className="w-9 h-9 rounded-xl bg-[#C2F54A]/15 flex items-center justify-center text-[#C2F54A] shrink-0">
-          <CurrencyGlyph size="badge" className="font-semibold" />
+        <div className="w-11 h-11 rounded-[12px] bg-[#B6F03C]/10 flex items-center justify-center text-[#B6F03C] shrink-0">
+          <EuroIcon size={22} />
         </div>
       </div>
 

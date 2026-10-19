@@ -2,8 +2,11 @@
 
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Battery, Gauge, Car, Zap, Moon, WifiOff,
-  ParkingCircle, Clock, Signal } from 'lucide-react';
+import { WifiOff, Clock, Signal, Battery } from 'lucide-react';
+import {
+  SleepIcon, OnlineIcon, DrivingIcon, ChargingStatusIcon,
+  SoftwareUpdateIcon, OfflineIcon, StaleIcon,
+} from '@/components/icons/StatusIcons';
 import { useTranslation } from 'react-i18next';
 import { useVehicleStatus } from '@/hooks/useVehicleStatus';
 import { formatRelativeTime } from '@/lib/utils';
@@ -22,16 +25,18 @@ const STATE_CONFIG: Record<string, {
   border: string;
   text: string;
 }> = {
-  driving:  { icon: Car,          bg: 'bg-[#43D1AD]/15',  border: 'border-[#43D1AD]/30',  text: 'text-[#43D1AD]'          },
-  stopped:  { icon: Car,          bg: 'bg-[#43D1AD]/10',  border: 'border-[#43D1AD]/20',  text: 'text-[#43D1AD]'          },
-  charging: { icon: Zap,          bg: 'bg-[#C2F54A]/10',  border: 'border-[#C2F54A]/25',  text: 'text-[#C2F54A]'          },
-  parked:   { icon: ParkingCircle,bg: 'bg-slate-500/15',  border: 'border-slate-500/30',  text: 'text-muted-foreground'   },
-  sleeping: { icon: Moon,         bg: 'bg-indigo-500/10', border: 'border-indigo-500/20', text: 'text-indigo-700 dark:text-indigo-300' },
-  waking:   { icon: Car,          bg: 'bg-amber-500/10',  border: 'border-amber-500/25',  text: 'text-amber-700 dark:text-amber-300'  },
-  offline:  { icon: WifiOff,      bg: 'bg-red-500/10',    border: 'border-red-500/20',    text: 'text-red-700 dark:text-red-400'      },
+  driving:  { icon: DrivingIcon,        bg: 'bg-[#2DD4BF]/15',  border: 'border-[#2DD4BF]/30',  text: 'text-[#2DD4BF]'  },
+  stopped:  { icon: DrivingIcon,        bg: 'bg-[#2DD4BF]/10',  border: 'border-[#2DD4BF]/20',  text: 'text-[#2DD4BF]'  },
+  charging: { icon: ChargingStatusIcon, bg: 'bg-[#B6F03C]/10',  border: 'border-[#B6F03C]/25',  text: 'text-[#B6F03C]'  },
+  parked:   { icon: SleepIcon,          bg: 'bg-[#818CF8]/10',  border: 'border-[#818CF8]/20',  text: 'text-[#818CF8]'  },
+  sleeping: { icon: SleepIcon,          bg: 'bg-[#818CF8]/10',  border: 'border-[#818CF8]/20',  text: 'text-[#818CF8]'  },
+  waking:   { icon: DrivingIcon,        bg: 'bg-amber-500/10',  border: 'border-amber-500/25',  text: 'text-amber-400'  },
+  online:   { icon: OnlineIcon,         bg: 'bg-[#4ADE80]/10',  border: 'border-[#4ADE80]/25',  text: 'text-[#6EE7A0]'  },
+  offline:  { icon: OfflineIcon,        bg: 'bg-[#8A979E]/10',  border: 'border-[#8A979E]/20',  text: 'text-[#AEB9BE]'  },
+  updating: { icon: SoftwareUpdateIcon, bg: 'bg-[#60A5FA]/10',  border: 'border-[#60A5FA]/25',  text: 'text-[#8DC0FC]'  },
 };
 
-const DEFAULT_STATE_CFG = { icon: Gauge, bg: 'bg-slate-500/10', border: 'border-slate-600/30', text: 'text-muted-foreground' };
+const DEFAULT_STATE_CFG = { icon: OnlineIcon, bg: 'bg-[#4ADE80]/10', border: 'border-[#4ADE80]/20', text: 'text-[#6EE7A0]' };
 
 export function VehicleStatusCard({ vehicleId }: Props) {
   const { status, isLoading, refresh } = useVehicleStatus(vehicleId);

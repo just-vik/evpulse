@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { LeafIcon } from '@/components/icons/NavIcons';
+import { LeafMetricIcon } from '@/components/icons/StatusIcons';
 import { useTranslation } from 'react-i18next';
 import { useEfficiencyPrediction } from '@/hooks/useEfficiencyPrediction';
 import { BaseCard } from '@/shared/ui';
@@ -50,8 +50,8 @@ export function EfficiencyCard({ vehicleId }: Props) {
               {unit === 'whkm' ? 'kWh/100' : 'Wh/km'}
             </button>
           )}
-          <div className="w-9 h-9 rounded-xl bg-[#43D1AD]/15 flex items-center justify-center text-[#43D1AD] shrink-0">
-            <LeafIcon size={20} />
+          <div className="w-11 h-11 rounded-[12px] bg-[#4ADE80]/10 flex items-center justify-center text-[#4ADE80] shrink-0">
+            <LeafMetricIcon size={22} />
           </div>
         </div>
       </div>

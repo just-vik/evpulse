@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Loader, AlertTriangle } from 'lucide-react';
-import { BatteryIcon } from '@/components/icons/NavIcons';
+import { SohIcon } from '@/components/icons/StatusIcons';
 import { useTranslation } from 'react-i18next';
 import { useBatteryHealth } from '@/hooks/useBatteryHealth';
 import { BaseCard } from '@/shared/ui';
@@ -61,8 +61,8 @@ export function BatteryHealthCard({ vehicleId }: Props) {
             </h3>
           )}
         </div>
-        <div className="w-9 h-9 rounded-xl bg-[#C2F54A]/15 flex items-center justify-center text-[#C2F54A] shrink-0">
-          <BatteryIcon size={20} />
+        <div className="w-11 h-11 rounded-[12px] bg-[#B6F03C]/10 flex items-center justify-center text-[#B6F03C] shrink-0">
+          <SohIcon size={22} />
         </div>
       </div>
 

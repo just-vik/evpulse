@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ChargingIcon } from '@/components/icons/NavIcons';
+import { PlugIcon } from '@/components/icons/StatusIcons';
 import { useTranslation } from 'react-i18next';
 import { useChargingSummary } from '@/hooks/useVehicleAggregates';
 import { BaseCard } from '@/shared/ui';
@@ -30,8 +30,8 @@ export function ChargingSummaryCard({ vehicleId }: Props) {
           )}
           <p className="text-[10px] text-muted-foreground/50 mt-0.5">{t('cards.charging30d.period', { defaultValue: 'за 30 дней' })}</p>
         </div>
-        <div className="w-9 h-9 rounded-xl bg-[#43D1AD]/15 flex items-center justify-center text-[#43D1AD] shrink-0">
-          <ChargingIcon size={20} />
+        <div className="w-11 h-11 rounded-[12px] bg-[#B6F03C]/10 flex items-center justify-center text-[#B6F03C] shrink-0">
+          <PlugIcon size={22} />
         </div>
       </div>
 

@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { CalendarRange, Settings } from 'lucide-react';
+import { Settings } from 'lucide-react';
+import { CalendarMetricIcon } from '@/components/icons/StatusIcons';
 import { useTranslation } from 'react-i18next';
 import Link from 'next/link';
 import { useCostForecast } from '@/hooks/useCostForecast';
@@ -36,8 +37,8 @@ export function CostForecastCard({ vehicleId }: Props) {
             </h3>
           )}
         </div>
-        <div className="w-9 h-9 rounded-xl bg-[#43D1AD]/15 flex items-center justify-center text-[#43D1AD] shrink-0">
-          <CalendarRange className="w-5 h-5" />
+        <div className="w-11 h-11 rounded-[12px] bg-[#2DD4BF]/10 flex items-center justify-center text-[#2DD4BF] shrink-0">
+          <CalendarMetricIcon size={22} />
         </div>
       </div>
 
