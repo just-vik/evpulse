@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Downloads SRTM3 (90m resolution) elevation tiles for Germany and Netherlands.
-# Coverage: lat 49–52 N, lon 3–10 E — 32 tiles, ~90 MB total.
-# Source: NASA SRTM v2.1 via USGS (public domain, no registration required).
+# Downloads SRTM1 (30m resolution) elevation tiles for Germany and Netherlands.
+# Coverage: lat 49–52 N, lon 3–10 E — 32 tiles × ~25 MB = ~800 MB total.
+# Source: AWS terrain tiles (elevation-tiles-prod, public, no auth required).
+#         Format: gzipped HGT (1-arc-second, compatible with opentopodata).
 #
 # Usage:
 #   bash infra/opentopodata/download-srtm.sh
@@ -12,7 +13,7 @@
 set -euo pipefail
 
 DEST="$(cd "$(dirname "$0")" && pwd)/data/srtm"
-BASE_URL="https://dds.cr.usgs.gov/srtm/version2_1/SRTM3/Eurasia"
+BASE_URL="https://s3.amazonaws.com/elevation-tiles-prod/skadi"
 
 mkdir -p "$DEST"
 
@@ -25,6 +26,7 @@ for lat in 49 50 51 52; do
     LAT_STR=$(printf "%02d" "$lat")
     LON_STR=$(printf "%03d" "$lon")
     FILE="N${LAT_STR}E${LON_STR}.hgt"
+    DIR="N${LAT_STR}"
 
     if [[ -f "$DEST/$FILE" ]]; then
       echo "  skip  $FILE (already exists)"
@@ -32,26 +34,25 @@ for lat in 49 50 51 52; do
       continue
     fi
 
-    URL="${BASE_URL}/${FILE}.zip"
+    URL="${BASE_URL}/${DIR}/${FILE}.gz"
     echo "  fetch $FILE ..."
-    if wget -q --timeout=30 --tries=3 "$URL" -O "$DEST/${FILE}.zip" 2>/dev/null; then
-      unzip -q -o "$DEST/${FILE}.zip" -d "$DEST/" 2>/dev/null || true
-      rm -f "$DEST/${FILE}.zip"
+    if wget -q --timeout=60 --tries=3 "$URL" -O "$DEST/${FILE}.gz" 2>/dev/null; then
+      gzip -d "$DEST/${FILE}.gz"
       if [[ -f "$DEST/$FILE" ]]; then
         ((downloaded++)) || true
       else
-        echo "  warn  $FILE: zip downloaded but HGT missing (tile may be ocean)"
+        echo "  warn  $FILE: gz downloaded but HGT missing"
         ((failed++)) || true
       fi
     else
-      echo "  warn  $FILE: download failed (ocean tile or server unavailable)"
-      rm -f "$DEST/${FILE}.zip"
+      echo "  warn  $FILE: download failed"
+      rm -f "$DEST/${FILE}.gz"
       ((failed++)) || true
     fi
   done
 done
 
 echo ""
-echo "Done. downloaded=${downloaded}  skipped=${skipped}  failed/ocean=${failed}"
-echo "HGT files in $DEST:"
-ls "$DEST"/*.hgt 2>/dev/null | wc -l
+echo "Done. downloaded=${downloaded}  skipped=${skipped}  failed=${failed}"
+echo "HGT files in $DEST: $(ls "$DEST"/*.hgt 2>/dev/null | wc -l)"
+du -sh "$DEST" 2>/dev/null || true
