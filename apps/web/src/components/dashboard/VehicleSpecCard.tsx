@@ -15,8 +15,8 @@ function ChemistryBadge({ chemistry }: { chemistry: string }) {
   return (
     <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide ${
       isLfp
-        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
-        : 'bg-blue-500/15 text-blue-400 border border-blue-500/20'
+        ? 'bg-[#43D1AD]/15 text-[#43D1AD] border border-[#43D1AD]/20'
+        : 'bg-[#3B82F6]/15 text-[#3B82F6] border border-[#3B82F6]/20'
     }`}>
       {chemistry}
     </span>
@@ -25,7 +25,7 @@ function ChemistryBadge({ chemistry }: { chemistry: string }) {
 
 function GenerationBadge({ generation }: { generation: string }) {
   return (
-    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-500/15 text-violet-400 border border-violet-500/20">
+    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#8B8FCC]/15 text-[#8B8FCC] border border-[#8B8FCC]/20">
       {generation}
     </span>
   );
@@ -160,7 +160,7 @@ export function VehicleSpecCard({ vehicleId }: Props) {
       {chargeRec && (
         <div className={`mt-3 flex items-start gap-2 px-2.5 py-2 rounded-lg text-[11px] leading-relaxed ${
           chargeRec === 'charge_to_100'
-            ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-300'
+            ? 'bg-[#43D1AD]/10 border border-[#43D1AD]/20 text-[#43D1AD]'
             : 'bg-amber-500/10 border border-amber-500/20 text-amber-300'
         }`}>
           <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />

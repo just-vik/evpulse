@@ -46,7 +46,7 @@ interface Props {
 }
 
 const CHARGER_STACKS = [
-  { key: 'home',   label: 'Home',         color: '#10b981' },
+  { key: 'home',   label: 'Home',         color: '#43D1AD' },
   { key: 'sc',     label: 'Supercharger', color: '#f43f5e' },
   { key: 'dc',     label: 'DC Fast',      color: '#f59e0b' },
   { key: 'public', label: 'AC Public',    color: '#0ea5e9' },
@@ -81,7 +81,7 @@ export default function ChargingCharts({ timelineData, stackTotals, monthlyCosts
         const costHtml = costEntry && costEntry.cost > 0
           ? `<div style="display:flex;justify-content:space-between;margin-top:2px">
               <span style="color:#9ca3af">Cost</span>
-              <span style="font-weight:700;color:#a78bfa;font-variant-numeric:tabular-nums">${fmtMoney(costEntry.cost)}</span>
+              <span style="font-weight:700;color:#8B8FCC;font-variant-numeric:tabular-nums">${fmtMoney(costEntry.cost)}</span>
             </div>`
           : '';
         return `<div style="min-width:160px">
@@ -89,7 +89,7 @@ export default function ChargingCharts({ timelineData, stackTotals, monthlyCosts
           ${rows}
           <div style="border-top:1px solid #2a2d36;margin-top:6px;padding-top:6px;display:flex;justify-content:space-between">
             <span style="color:#9ca3af">Total</span>
-            <span style="font-weight:700;color:#34d399;font-variant-numeric:tabular-nums">${total.toFixed(1)} kWh</span>
+            <span style="font-weight:700;color:#43D1AD;font-variant-numeric:tabular-nums">${total.toFixed(1)} kWh</span>
           </div>
           ${costHtml}
         </div>`;
@@ -143,7 +143,7 @@ export default function ChargingCharts({ timelineData, stackTotals, monthlyCosts
         const rows = params.map((p) => {
           const isEnergy = p.seriesName === 'Energy';
           const val = isEnergy ? `${Number(p.value).toFixed(1)} kWh` : fmtMoney(Number(p.value));
-          const color = isEnergy ? '#34d399' : '#a78bfa';
+          const color = isEnergy ? '#43D1AD' : '#8B8FCC';
           return `<div style="display:flex;justify-content:space-between;gap:14px;margin-bottom:4px">
             <span style="display:flex;align-items:center;gap:5px;color:#9ca3af">
               <span style="width:8px;height:8px;border-radius:2px;background:${p.color};display:inline-block"></span>
@@ -197,8 +197,8 @@ export default function ChargingCharts({ timelineData, stackTotals, monthlyCosts
             type: 'linear' as const,
             x: 0, y: 0, x2: 0, y2: 1,
             colorStops: [
-              { offset: 0, color: '#10b981' },
-              { offset: 1, color: '#10b98160' },
+              { offset: 0, color: '#43D1AD' },
+              { offset: 1, color: '#43D1AD60' },
             ],
           },
           borderRadius: [4, 4, 1, 1],
@@ -210,8 +210,8 @@ export default function ChargingCharts({ timelineData, stackTotals, monthlyCosts
         type: 'line' as const,
         yAxisIndex: 1,
         data: monthlyCosts.map((d) => d.totalCost),
-        lineStyle: { color: '#a78bfa', width: 2, type: 'dashed' as const },
-        itemStyle: { color: '#a78bfa' },
+        lineStyle: { color: '#8B8FCC', width: 2, type: 'dashed' as const },
+        itemStyle: { color: '#8B8FCC' },
         symbol: 'circle',
         symbolSize: 6,
         smooth: false,
@@ -229,7 +229,7 @@ export default function ChargingCharts({ timelineData, stackTotals, monthlyCosts
         >
           <div className="px-5 pt-5 pb-3 border-b border-[hsl(var(--border)/0.45)] flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Zap size={16} className="text-emerald-400" />
+              <Zap size={16} className="text-[#43D1AD]" />
               <span className="text-base font-semibold text-foreground">{t('charging.sessionHistoryTitle')}</span>
             </div>
             <div className="flex items-center gap-3 flex-wrap justify-end">
@@ -256,16 +256,16 @@ export default function ChargingCharts({ timelineData, stackTotals, monthlyCosts
         >
           <div className="px-5 pt-5 pb-3 border-b border-[hsl(var(--border)/0.45)] flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <BarChart2 size={16} className="text-violet-400" />
+              <BarChart2 size={16} className="text-[#43D1AD]" />
               <span className="text-base font-semibold text-foreground">Monthly Overview</span>
             </div>
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" />
+                <span className="w-2.5 h-2.5 rounded-sm bg-[#43D1AD]" />
                 <span className="text-[11px] text-muted-foreground">Energy kWh</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="w-3 h-0.5 rounded-sm" style={{ background: '#a78bfa', borderTop: '2px dashed #a78bfa' }} />
+                <span className="w-3 h-0.5 rounded-sm" style={{ background: '#8B8FCC', borderTop: '2px dashed #8B8FCC' }} />
                 <span className="text-[11px] text-muted-foreground">{t('charging.cost')} {currSymbol}</span>
               </div>
             </div>

@@ -15,7 +15,7 @@ import {
   ExportIcon,
   SettingsIcon,
 } from '@/components/icons/NavIcons';
-import { EVPulseLogo } from '@/components/branding/EVPulseLogo';
+import { RoviqenLogo } from '@/components/branding/RoviqenLogo';
 import { useLayoutStore } from '@/stores/layout.store';
 
 interface NavItem {
@@ -127,13 +127,13 @@ export function Sidebar() {
   return (
     <aside className="
       w-64 h-full flex flex-col
-      bg-gradient-to-b from-[#0d1018] via-[#0a0c14] to-[#080b12]
-      border-r border-white/[0.055]
+      bg-gradient-to-b from-[#14181A] via-[#0C0F11] to-[#0C0F11]
+      border-r border-white/[0.045]
       overflow-y-auto scrollbar-hide
     ">
       {/* Brand */}
       <div className="px-5 pb-3" style={{ paddingTop: 'calc(1.25rem + env(safe-area-inset-top))' }}>
-        <EVPulseLogo markSize={42} onNavigate={handleNavClick} className="brightness-110" />
+        <RoviqenLogo markSize={32} onNavigate={handleNavClick} />
       </div>
 
       {/* Divider */}

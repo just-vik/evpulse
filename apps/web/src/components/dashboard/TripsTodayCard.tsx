@@ -17,16 +17,20 @@ export function TripsTodayCard({ vehicleId }: Props) {
   return (
     <BaseCard>
       <div className="flex items-start justify-between mb-4">
-        <div>
+        <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
             {t('cards.tripsToday.title')}
           </p>
-          <h3 className="text-2xl font-bold text-emerald-400 tracking-tight tabular-nums">
-            {isLoading || !tripsToday ? '— km' : `${tripsToday.distanceKm.toFixed(1)} km`}
-          </h3>
+          {isLoading ? (
+            <div className="h-8 w-24 rounded-lg bg-[hsl(var(--muted)/0.5)] animate-pulse" />
+          ) : (
+            <h3 className="text-2xl font-bold text-[#43D1AD] tracking-tight tabular-nums">
+              {tripsToday ? `${tripsToday.distanceKm.toFixed(1)} km` : '— km'}
+            </h3>
+          )}
           <p className="text-[10px] text-muted-foreground/50 mt-0.5">{t('cards.tripsToday.period', { defaultValue: 'сегодня' })}</p>
         </div>
-        <div className="w-9 h-9 rounded-xl bg-emerald-500/15 flex items-center justify-center text-emerald-400 shrink-0">
+        <div className="w-9 h-9 rounded-xl bg-[#43D1AD]/15 flex items-center justify-center text-[#43D1AD] shrink-0">
           <TripIcon size={20} />
         </div>
       </div>
@@ -34,20 +38,26 @@ export function TripsTodayCard({ vehicleId }: Props) {
       <div className="stat-grid grid grid-cols-3 gap-3 pt-3 border-t border-[hsl(var(--border)/0.5)]">
         <div>
           <p className="text-[11px] text-muted-foreground mb-0.5">{t('cards.tripsToday.trips')}</p>
-          <p className="text-sm font-semibold text-foreground">
-            {tripsToday?.tripCount ?? (isLoading ? '…' : 0)}
-          </p>
+          {isLoading ? (
+            <div className="h-4 w-8 rounded bg-[hsl(var(--muted)/0.4)] animate-pulse" />
+          ) : (
+            <p className="text-sm font-semibold text-foreground">{tripsToday?.tripCount ?? 0}</p>
+          )}
         </div>
         <div>
           <p className="text-[11px] text-muted-foreground mb-0.5">{t('cards.tripsToday.energy')}</p>
-          <p className="text-sm font-semibold text-foreground">
-            {tripsToday ? `${tripsToday.energyKwh.toFixed(1)} kWh` : isLoading ? '…' : '0 kWh'}
-          </p>
+          {isLoading ? (
+            <div className="h-4 w-14 rounded bg-[hsl(var(--muted)/0.4)] animate-pulse" />
+          ) : (
+            <p className="text-sm font-semibold text-foreground">
+              {tripsToday ? `${tripsToday.energyKwh.toFixed(1)} kWh` : '0 kWh'}
+            </p>
+          )}
         </div>
         <div>
           <p className="text-[11px] text-muted-foreground mb-0.5">{t('cards.tripsToday.efficiency')}</p>
           <p className="text-sm font-semibold text-foreground">
-            {tripsToday?.efficiencyWhKm != null ? `${Math.round(tripsToday.efficiencyWhKm)} Wh/km` : '—'}
+            {isLoading ? '…' : tripsToday?.efficiencyWhKm != null ? `${Math.round(tripsToday.efficiencyWhKm)} Wh/km` : '—'}
           </p>
         </div>
       </div>

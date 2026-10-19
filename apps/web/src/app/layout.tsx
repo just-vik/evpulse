@@ -4,13 +4,13 @@ import { Providers } from './providers'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'EVPulse',
-  description: 'Real-time Tesla analytics, trip tracking and fleet management',
+  title: 'ROVIQEN',
+  description: 'Premium EV intelligence — real-time analytics, trip tracking and fleet management',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'EVPulse',
+    title: 'ROVIQEN',
   },
   icons: {
     icon: [
@@ -35,7 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <meta name="theme-color" content="#a855f7" />
+        <meta name="theme-color" content="#C2F54A" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />

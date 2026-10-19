@@ -4,7 +4,7 @@ import React, { useState } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { Loader, AlertCircle } from 'lucide-react'
-import { EVPulseLogo } from '@/components/branding/EVPulseLogo'
+import { RoviqenLogo } from '@/components/branding/RoviqenLogo'
 import { useAuth } from '@/hooks/useAuth'
 
 export default function RegisterPage() {
@@ -81,7 +81,7 @@ export default function RegisterPage() {
         {/* LOGO */}
 
         <div className="flex items-center justify-center mb-8">
-          <EVPulseLogo size="large" withLink={false} className="brightness-110" />
+          <RoviqenLogo size="large" withLink={false} />
         </div>
 
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8">

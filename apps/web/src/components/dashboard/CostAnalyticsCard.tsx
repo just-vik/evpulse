@@ -20,15 +20,19 @@ export function CostAnalyticsCard({ vehicleId }: Props) {
   return (
     <BaseCard className="h-full">
       <div className="flex items-start justify-between mb-4">
-        <div>
+        <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
             {t('cards.cost30d.title')}
           </p>
-          <h3 className="text-2xl font-bold text-violet-400 tracking-tight tabular-nums">
-            {costSummary ? formatMoney(costSummary.totalCost) : isLoading ? '…' : '—'}
-          </h3>
+          {isLoading ? (
+            <div className="h-8 w-24 rounded-lg bg-[hsl(var(--muted)/0.5)] animate-pulse" />
+          ) : (
+            <h3 className="text-2xl font-bold text-[#C2F54A] tracking-tight tabular-nums">
+              {costSummary ? formatMoney(costSummary.totalCost) : '—'}
+            </h3>
+          )}
         </div>
-        <div className="w-9 h-9 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-300 shrink-0">
+        <div className="w-9 h-9 rounded-xl bg-[#C2F54A]/15 flex items-center justify-center text-[#C2F54A] shrink-0">
           <CurrencyGlyph size="badge" className="font-semibold" />
         </div>
       </div>
@@ -36,17 +40,23 @@ export function CostAnalyticsCard({ vehicleId }: Props) {
       <div className="stat-grid grid grid-cols-2 gap-3 pt-3 border-t border-[hsl(var(--border)/0.5)]">
         <div>
           <p className="text-[11px] text-muted-foreground mb-0.5">{t('cards.cost30d.energy')}</p>
-          <p className="text-sm font-semibold text-foreground">
-            {costSummary ? `${costSummary.energyKwh.toFixed(1)} kWh` : isLoading ? '…' : '—'}
-          </p>
+          {isLoading ? (
+            <div className="h-4 w-16 rounded bg-[hsl(var(--muted)/0.4)] animate-pulse" />
+          ) : (
+            <p className="text-sm font-semibold text-foreground">
+              {costSummary ? `${costSummary.energyKwh.toFixed(1)} kWh` : '—'}
+            </p>
+          )}
         </div>
         <div>
           <p className="text-[11px] text-muted-foreground mb-0.5">{t('cards.cost30d.costPerKm')}</p>
-          <p className="text-sm font-semibold text-foreground">
-            {costSummary?.costPerKm != null
-              ? formatPerKm(costSummary.costPerKm)
-              : '—'}
-          </p>
+          {isLoading ? (
+            <div className="h-4 w-14 rounded bg-[hsl(var(--muted)/0.4)] animate-pulse" />
+          ) : (
+            <p className="text-sm font-semibold text-foreground">
+              {costSummary?.costPerKm != null ? formatPerKm(costSummary.costPerKm) : '—'}
+            </p>
+          )}
         </div>
       </div>
     </BaseCard>

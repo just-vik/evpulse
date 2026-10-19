@@ -1,15 +1,19 @@
-/** Dark theme tokens aligned with app shell (#0B0B0F base, glass + neon accents) */
+/** Dark theme tokens — ROVIQEN palette (Obsidian / Carbon / Volt Lime) */
 export const ECHARTS_BG = 'transparent'
-export const ECHARTS_AXIS = '#2A2D36'
-export const ECHARTS_AXIS_LABEL = '#9CA3AF'
-export const ECHARTS_SPLIT = '#1A1C23'
-export const ECHARTS_TOOLTIP_BG = '#111217'
-export const ECHARTS_TOOLTIP_BORDER = '#2A2D36'
-export const ECHARTS_TEXT = '#E5E7EB'
+export const ECHARTS_AXIS = '#22282A'          /* Elevated surface border */
+export const ECHARTS_AXIS_LABEL = '#929E9C'    /* Secondary text          */
+export const ECHARTS_SPLIT = '#1C2123'         /* Graphite                */
+export const ECHARTS_TOOLTIP_BG = '#14181A'    /* Carbon                  */
+export const ECHARTS_TOOLTIP_BORDER = '#22282A'
+export const ECHARTS_TEXT = '#F0F4ED'          /* Cloud White             */
 
 export const NEON = {
-  blue: '#3B82F6',
-  emerald: '#10B981',
-  violet: '#8B5CF6',
-  cyan: '#22D3EE',
+  lime:    '#C2F54A',   /* Volt Lime   — primary accent  */
+  teal:    '#43D1AD',   /* Signal Teal — secondary       */
+  blue:    '#3B82F6',   /* retained for cost/energy data */
+  amber:   '#F59E0B',   /* retained for warnings         */
+  /* legacy aliases — kept for backward compat with existing charts */
+  emerald: '#43D1AD',   /* → Signal Teal                 */
+  violet:  '#8B8FCC',   /* muted indigo — battery health */
+  cyan:    '#22D3EE',
 }

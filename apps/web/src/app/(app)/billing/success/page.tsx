@@ -18,8 +18,8 @@ export default function BillingSuccessPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-4 text-center px-6">
-      <div className="w-16 h-16 rounded-full bg-green-500/15 flex items-center justify-center">
-        <CheckCircle size={32} className="text-green-500" />
+      <div className="w-16 h-16 rounded-full bg-[#43D1AD]/15 flex items-center justify-center">
+        <CheckCircle size={32} className="text-[#43D1AD]" />
       </div>
       <h1 className="text-xl font-semibold text-foreground">Подписка активирована!</h1>
       <p className="text-sm text-muted-foreground max-w-xs">

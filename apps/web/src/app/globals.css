@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /* ══════════════════════════════════════════════════════════════════════
-   DESIGN TOKENS — EVPulse 2026
+   DESIGN TOKENS — ROVIQEN
    Layer 0: HSL channel vars (Tailwind compat, keep until full migration)
    Layer 1: OKLCH semantic surfaces  ← primary system going forward
    Layer 2: Accent system (drives 4 things: primary, ring, tint, palette)
@@ -17,46 +17,53 @@
 /* ── Root: dark (default) ────────────────────────────────────────────── */
 :root {
   /* Legacy HSL channel vars (Tailwind utilities use these) */
-  --background: 244 40% 10%;
-  --foreground: 210 40% 98%;
-  --card: 220 43% 14%;
-  --card-foreground: 210 40% 98%;
-  --popover: 222 47% 11%;
-  --popover-foreground: 210 40% 98%;
-  --primary: 210 40% 98%;
-  --primary-foreground: 222 47% 11%;
-  --secondary: 217 33% 17%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 217 33% 17%;
-  --muted-foreground: 215 20% 65%;
-  --accent: 217 33% 17%;
-  --accent-foreground: 210 40% 98%;
+  /* ROVIQEN surface palette: Obsidian → Carbon → Graphite → Elevated   */
+  --background: 204 17% 6%;          /* Obsidian  #0C0F11                */
+  --foreground: 100 24% 94%;         /* Cloud White #F0F4ED              */
+  --card: 200 13% 9%;                /* Carbon    #14181A                */
+  --card-foreground: 100 24% 94%;
+  --popover: 197 11% 12%;            /* Graphite  #1C2123                */
+  --popover-foreground: 100 24% 94%;
+  --primary: 100 24% 94%;
+  --primary-foreground: 204 17% 6%;
+  --secondary: 195 11% 15%;          /* Elevated surface #22282A         */
+  --secondary-foreground: 100 24% 94%;
+  --muted: 195 11% 15%;
+  --muted-foreground: 165 5% 60%;    /* Secondary text #929E9C           */
+  --accent: 195 11% 15%;
+  --accent-foreground: 100 24% 94%;
   --destructive: 0 63% 31%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 217 33% 22%;
-  --input: 217 33% 17%;
-  --ring: 212 27% 84%;
+  --destructive-foreground: 100 24% 94%;
+  --border: 200 11% 18%;             /* subtle divider between surfaces  */
+  --input: 195 11% 15%;
+  --ring: 118 85% 80%;               /* Volt Lime focus ring             */
   --radius: 0.5rem;
 
   /* ── OKLCH Semantic Surfaces ─── */
-  /* 5 depth levels + text + border */
-  --s-base:       oklch(17.5% 0.028 282);   /* page background     */
-  --s-1:          oklch(20.5% 0.026 280);   /* card                */
-  --s-2:          oklch(23.5% 0.024 280);   /* elevated card       */
-  --s-3:          oklch(27.0% 0.022 278);   /* popover / modal     */
-  --s-4:          oklch(31.0% 0.020 278);   /* focused / hover     */
-  --s-border:     oklch(31.5% 0.021 280);   /* dividers & borders  */
-  --s-border-sub: oklch(26.0% 0.019 280);   /* subtle dividers     */
-  --s-text:       oklch(97.0% 0.004 270);   /* primary text        */
-  --s-text-muted: oklch(64.0% 0.013 276);   /* secondary text      */
-  --s-overlay:    oklch(0%    0     0 / 0.55); /* modal backdrop   */
+  /* ROVIQEN: Obsidian / Carbon / Graphite / Elevated (each ~+3% L step) */
+  --s-base:       oklch(8.5%  0.006 220);   /* Obsidian  #0C0F11         */
+  --s-1:          oklch(11.5% 0.006 215);   /* Carbon    #14181A  card   */
+  --s-2:          oklch(14.8% 0.007 215);   /* Graphite  #1C2123  elev.  */
+  --s-3:          oklch(17.6% 0.007 213);   /* Elevated  #22282A  popover*/
+  --s-4:          oklch(21.0% 0.008 210);   /* hover / focused           */
+  --s-border:     oklch(20.5% 0.008 210);   /* dividers & borders        */
+  --s-border-sub: oklch(16.5% 0.007 213);   /* subtle dividers           */
+  --s-text:       oklch(96.5% 0.011 140);   /* Cloud White   #F0F4ED     */
+  --s-text-muted: oklch(63.5% 0.008 170);   /* Secondary txt #929E9C     */
+  --s-overlay:    oklch(0%    0     0 / 0.60); /* modal backdrop          */
+
+  /* ── Named brand vars ─── */
+  --volt-lime:    #C2F54A;           /* Volt Lime  — CTAs, highlights    */
+  --signal-teal:  #43D1AD;           /* Signal Teal — secondary accent   */
+  --cloud-white:  #F0F4ED;           /* Cloud White — primary text       */
 
   /* ── Accent OKLCH system ──
      Drives: --a-500 (base), --a-400 (lighter), --a-tint (subtle bg),
-             --a-glow (shadow color), --a-ring (focus ring)         */
-  --a-l:      62%;
-  --a-c:      0.23;
-  --a-h:      262;   /* blue */
+             --a-glow (shadow color), --a-ring (focus ring)
+     Default: Volt Lime (ROVIQEN brand primary)                         */
+  --a-l:      85%;
+  --a-c:      0.22;
+  --a-h:      118;   /* Volt Lime hue */
 
   --a-500:    oklch(var(--a-l)    var(--a-c)       var(--a-h));
   --a-400:    oklch(72%           var(--a-c)       var(--a-h));
@@ -87,27 +94,27 @@
   }
 }
 
-/* ── Light theme ─────────────────────────────────────────────────────── */
+/* ── Light theme (retains structure; ROVIQEN is dark-first) ─────────── */
 .light {
-  --background: 210 20% 97%;
-  --foreground: 222 47% 14%;
+  --background: 120 15% 97%;
+  --foreground: 200 20% 12%;
   --card: 0 0% 100%;
-  --card-foreground: 222 47% 14%;
+  --card-foreground: 200 20% 12%;
   --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 14%;
-  --primary: 222 47% 14%;
-  --primary-foreground: 210 40% 98%;
-  --secondary: 210 40% 94%;
-  --secondary-foreground: 222 47% 14%;
-  --muted: 210 40% 94%;
-  --muted-foreground: 215 16% 47%;
-  --accent: 210 40% 94%;
-  --accent-foreground: 222 47% 14%;
+  --popover-foreground: 200 20% 12%;
+  --primary: 200 20% 12%;
+  --primary-foreground: 100 24% 96%;
+  --secondary: 120 10% 94%;
+  --secondary-foreground: 200 20% 12%;
+  --muted: 120 10% 94%;
+  --muted-foreground: 165 8% 45%;
+  --accent: 120 10% 94%;
+  --accent-foreground: 200 20% 12%;
   --destructive: 0 84% 60%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 214 32% 88%;
-  --input: 214 32% 91%;
-  --ring: 222 47% 11%;
+  --destructive-foreground: 100 24% 98%;
+  --border: 120 12% 88%;
+  --input: 120 10% 91%;
+  --ring: 118 85% 45%;
 
   --s-base:       oklch(97.0% 0.005 255);
   --s-1:          oklch(100%  0     0  );
@@ -125,8 +132,9 @@
 
 /* ══ Accent system: each accent changes --a-l, --a-c, --a-h
      plus shadow-profile and surface-tint character               ══════ */
+[data-accent="volt"]    { --a-l:85%; --a-c:0.22; --a-h:118; --a-shadow-spread:28px; } /* Volt Lime — ROVIQEN default */
+[data-accent="teal"]    { --a-l:75%; --a-c:0.16; --a-h:175; --a-shadow-spread:26px; } /* Signal Teal */
 [data-accent="blue"]    { --a-l:62%; --a-c:0.23; --a-h:262; --a-shadow-spread:28px; }
-[data-accent="teal"]    { --a-l:57%; --a-c:0.20; --a-h:185; --a-shadow-spread:26px; }
 [data-accent="violet"]  { --a-l:63%; --a-c:0.27; --a-h:295; --a-shadow-spread:32px; }
 [data-accent="emerald"] { --a-l:60%; --a-c:0.22; --a-h:152; --a-shadow-spread:26px; }
 [data-accent="amber"]   { --a-l:70%; --a-c:0.20; --a-h:72;  --a-shadow-spread:24px; }
@@ -194,7 +202,7 @@ body {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   SPATIAL CARD — the signature EVPulse component
+   SPATIAL CARD — cursor-reactive depth card
    Cursor-reactive glow driven by --mx, --my (set via JS in BaseCard)
    ══════════════════════════════════════════════════════════════════════ */
 

@@ -196,7 +196,7 @@ export function TripDetailsDrawer({ trip, onClose }: Props) {
                   trip.stats?.drivingStyle && {
                     label: t('trips.styleLabel'),
                     value: trip.stats.drivingStyle === 'eco' ? t('trips.drivingStyle_eco') : trip.stats.drivingStyle === 'normal' ? t('trips.drivingStyle_normal') : t('trips.drivingStyle_aggressive'),
-                    cls: trip.stats.drivingStyle === 'eco' ? 'text-green-400' : trip.stats.drivingStyle === 'normal' ? 'text-blue-400' : 'text-red-400',
+                    cls: trip.stats.drivingStyle === 'eco' ? 'text-[#43D1AD]' : trip.stats.drivingStyle === 'normal' ? 'text-[#3B82F6]' : 'text-red-400',
                   },
                 ].filter(Boolean) as { label: string; value: string; cls?: string }[];
                 if (!rows.length) return null;

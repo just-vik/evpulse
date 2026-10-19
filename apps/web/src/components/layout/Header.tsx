@@ -12,7 +12,7 @@ import {
   Menu,
   Bell,
 } from 'lucide-react';
-import { EVPulseLogo } from '@/components/branding/EVPulseLogo';
+import { RoviqenLogo } from '@/components/branding/RoviqenLogo';
 import { useTheme } from 'next-themes';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -130,7 +130,7 @@ export function Header({ onMenuClick }: HeaderProps) {
             <Menu size={18} />
           </button>
 
-          <EVPulseLogo markSize={40} className="brightness-110" />
+          <RoviqenLogo markSize={32} />
         </div>
 
         {/* Vehicle selector */}
@@ -152,7 +152,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                     className={clsx(
                       'w-2 h-2 rounded-full shrink-0',
                       selectedVehicle?.status === 'active'
-                        ? 'bg-green-400'
+                        ? 'bg-[#43D1AD]'
                         : 'bg-slate-500'
                     )}
                   />
@@ -197,7 +197,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                         className={clsx(
                           'w-2 h-2 rounded-full',
                           v.status === 'active'
-                            ? 'bg-green-500'
+                            ? 'bg-[#43D1AD]'
                             : 'bg-slate-500'
                         )}
                       />

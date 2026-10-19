@@ -62,10 +62,10 @@ export function VampireDrainWidget({ vehicleId }: Props) {
       : 'low';
 
   const colorMap = {
-    none:   { text: 'text-muted-foreground', iconBg: 'bg-[hsl(var(--secondary)/0.5)]', bar: 'bg-muted-foreground/30' },
-    low:    { text: 'text-green-400',  iconBg: 'bg-green-500/15',  bar: 'bg-green-400' },
-    medium: { text: 'text-amber-400',  iconBg: 'bg-amber-500/15',  bar: 'bg-amber-400' },
-    high:   { text: 'text-red-400',    iconBg: 'bg-red-500/15',    bar: 'bg-red-400' },
+    none:   { text: 'text-muted-foreground',  iconBg: 'bg-[hsl(var(--secondary)/0.5)]', bar: 'bg-muted-foreground/30' },
+    low:    { text: 'text-[#43D1AD]',         iconBg: 'bg-[#43D1AD]/15',                bar: 'bg-[#43D1AD]'          },
+    medium: { text: 'text-amber-400',         iconBg: 'bg-amber-500/15',                bar: 'bg-amber-400'          },
+    high:   { text: 'text-red-400',           iconBg: 'bg-red-500/15',                  bar: 'bg-red-400'            },
   };
   const c = colorMap[severity];
 
@@ -78,13 +78,13 @@ export function VampireDrainWidget({ vehicleId }: Props) {
             {t('cards.vampireDrain.title')}
           </p>
           <div className="flex items-baseline gap-2">
-            <h3 className={`text-2xl font-bold tracking-tight tabular-nums ${c.text}`}>
-              {isLoading
-                ? '…'
-                : avgDrain != null
-                ? `${avgDrain.toFixed(1)}%`
-                : t('cards.vampireDrain.noData')}
-            </h3>
+            {isLoading ? (
+              <div className="h-8 w-16 rounded-lg bg-[hsl(var(--muted)/0.5)] animate-pulse" />
+            ) : (
+              <h3 className={`text-2xl font-bold tracking-tight tabular-nums ${c.text}`}>
+                {avgDrain != null ? `${avgDrain.toFixed(1)}%` : t('cards.vampireDrain.noData')}
+              </h3>
+            )}
             {avgDrain != null && (
               <span className="text-xs text-muted-foreground">
                 {t('cards.vampireDrain.perNight')}
@@ -133,9 +133,11 @@ export function VampireDrainWidget({ vehicleId }: Props) {
           <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">
             {t('cards.vampireDrain.nights')}
           </p>
-          <p className="text-sm font-semibold tabular-nums text-foreground">
-            {isLoading ? '…' : logCount}
-          </p>
+          {isLoading ? (
+            <div className="h-4 w-8 rounded bg-[hsl(var(--muted)/0.4)] animate-pulse" />
+          ) : (
+            <p className="text-sm font-semibold tabular-nums text-foreground">{logCount}</p>
+          )}
         </div>
 
         <div>

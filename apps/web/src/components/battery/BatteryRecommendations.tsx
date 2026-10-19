@@ -26,15 +26,15 @@ interface Props {
 }
 
 const STATUS_ICON = {
-  ok:   <CheckCircle2 size={14} className="text-emerald-400 shrink-0 mt-0.5" />,
-  warn: <AlertCircle  size={14} className="text-amber-400  shrink-0 mt-0.5" />,
-  info: <Info         size={14} className="text-sky-400    shrink-0 mt-0.5" />,
+  ok:   <CheckCircle2 size={14} className="text-[#43D1AD] shrink-0 mt-0.5" />,
+  warn: <AlertCircle  size={14} className="text-amber-400 shrink-0 mt-0.5" />,
+  info: <Info         size={14} className="text-[#3B82F6] shrink-0 mt-0.5" />,
 };
 
 const STATUS_BG = {
-  ok:   'bg-emerald-500/6  border-emerald-500/20',
-  warn: 'bg-amber-500/6    border-amber-500/20',
-  info: 'bg-sky-500/6      border-sky-500/20',
+  ok:   'bg-[#43D1AD]/6  border-[#43D1AD]/20',
+  warn: 'bg-amber-500/6  border-amber-500/20',
+  info: 'bg-[#3B82F6]/6  border-[#3B82F6]/20',
 };
 
 export function BatteryRecommendations({ health, defaultChargeLimit, recentEndSoc, className = '' }: Props) {

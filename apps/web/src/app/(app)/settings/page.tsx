@@ -296,7 +296,7 @@ function VehiclesTab() {
               teslaStatus?.authExpired
                 ? 'bg-red-500/10 text-red-400 border border-red-500/30'
                 : teslaStatus?.connected
-                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                ? 'bg-[#43D1AD]/10 text-[#43D1AD] border border-[#43D1AD]/20'
                 : 'bg-[hsl(var(--secondary)/0.55)] text-muted-foreground border border-[hsl(var(--border)/0.8)]'
             }`}
           >
@@ -305,7 +305,7 @@ function VehiclesTab() {
                 teslaStatus?.authExpired
                   ? 'bg-red-400 animate-pulse'
                   : teslaStatus?.connected
-                  ? 'bg-emerald-400 animate-pulse'
+                  ? 'bg-[#43D1AD] animate-pulse'
                   : 'bg-[hsl(var(--muted-foreground)/0.5)]'
               }`}
             />
@@ -368,7 +368,7 @@ function VehiclesTab() {
               {t('settings.vehicles.enableStreaming')}
             </button>
             {saved === 'telemetry' && (
-              <span className="text-xs text-emerald-400 flex items-center gap-1">
+              <span className="text-xs text-[#43D1AD] flex items-center gap-1">
                 <CheckCircle size={12} /> {t('settings.vehicles.streamingConfigured')}
               </span>
             )}
@@ -400,7 +400,7 @@ function VehiclesTab() {
             {fleetStatus && (
               <div className={`flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-lg ${
                 fleetStatus.vehicles.every(v => v.keyPaired)
-                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                  ? 'bg-[#43D1AD]/10 text-[#43D1AD] border border-[#43D1AD]/20'
                   : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
               }`}>
                 {fleetStatus.vehicles.every(v => v.keyPaired)
@@ -454,12 +454,12 @@ function VehiclesTab() {
               {fleetStatus.vehicles.map(fv => (
                 <div key={fv.vehicleId} className="flex items-center gap-2 text-xs">
                   {fv.keyPaired === true
-                    ? <CheckCircle size={12} className="text-emerald-400 shrink-0" />
+                    ? <CheckCircle size={12} className="text-[#43D1AD] shrink-0" />
                     : fv.keyPaired === false
                       ? <AlertCircle size={12} className="text-amber-400 shrink-0" />
                       : <Loader size={12} className="text-muted-foreground shrink-0" />}
                   <span className="text-muted-foreground font-mono">{fv.vin ?? fv.vehicleId.slice(0, 8)}</span>
-                  <span className={fv.keyPaired ? 'text-emerald-400' : 'text-amber-400'}>
+                  <span className={fv.keyPaired ? 'text-[#43D1AD]' : 'text-amber-400'}>
                     {fv.keyPaired === true ? t('settings.vehicles.virtualKeyPairedStatus')
                       : fv.keyPaired === false ? t('settings.vehicles.virtualKeyNotPairedStatus')
                       : t('settings.vehicles.virtualKeyStatusUnknown')}
@@ -502,9 +502,9 @@ function VehiclesTab() {
               </p>
               <div className="space-y-3">
                 {[
-                  { key: 'homeChargingRate',  label: t('settings.preferences.rateHome'),         Icon: Home,          colorCls: 'text-emerald-400', color: '#10b981' },
+                  { key: 'homeChargingRate',  label: t('settings.preferences.rateHome'),         Icon: Home,          colorCls: 'text-[#43D1AD]',  color: '#43D1AD' },
                   { key: 'superchargerRate',  label: t('charging.supercharger'),                  Icon: Zap,           colorCls: 'text-amber-400',   color: '#f59e0b' },
-                  { key: 'thirdPartyRate',    label: t('settings.preferences.rateThirdParty'),    Icon: Plug,          colorCls: 'text-violet-400',  color: '#8b5cf6' },
+                  { key: 'thirdPartyRate',    label: t('settings.preferences.rateThirdParty'),    Icon: Plug,          colorCls: 'text-[#8B8FCC]',  color: '#8B8FCC' },
                 ].map(({ key, label, Icon, colorCls, color }) => (
                   <div key={key} className="flex items-center gap-3">
                     <Icon size={14} className={`${colorCls} shrink-0`} />
@@ -567,7 +567,7 @@ function VehiclesTab() {
               disabled={isSaving}
               className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
                 isSaved
-                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
+                  ? 'bg-[#43D1AD]/15 text-[#43D1AD] border border-[#43D1AD]/20'
                   : 'btn btn-primary'
               }`}
             >
@@ -953,7 +953,7 @@ function NotificationsTab() {
               <button
                 onClick={handleDisablePush}
                 disabled={pushLoading}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition disabled:opacity-60"
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#43D1AD]/10 text-[#43D1AD] border border-[#43D1AD]/20 hover:bg-[#43D1AD]/20 transition disabled:opacity-60"
               >
                 {pushLoading ? <Loader size={11} className="animate-spin" /> : <CheckCircle size={11} />}
                 {t('settings.notifications.pushActiveDisable')}
@@ -976,7 +976,7 @@ function NotificationsTab() {
           disabled={saving}
           className={`mt-4 w-full py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
             saved
-              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
+              ? 'bg-[#43D1AD]/15 text-[#43D1AD] border border-[#43D1AD]/20'
               : 'btn btn-primary'
           }`}
         >
@@ -1135,7 +1135,7 @@ function NotificationsTab() {
                         title={t('settings.notifications.editConditions', { defaultValue: 'Edit conditions & actions' })}
                         className={`p-1.5 rounded-lg transition-colors ${
                           (rule.conditions?.length || rule.actions?.length)
-                            ? 'text-violet-400 bg-violet-500/10'
+                            ? 'text-[#8B8FCC] bg-[#8B8FCC]/10'
                             : 'text-muted-foreground hover:text-foreground hover:bg-[hsl(var(--secondary)/0.6)]'
                         }`}
                       >
@@ -1272,7 +1272,7 @@ function ProfileTab() {
   const pwStrengthBar = {
     weak:   { w: 'w-1/3', color: 'bg-red-500',    label: t('settings.profile.passwordStrength.weak') },
     fair:   { w: 'w-2/3', color: 'bg-amber-500',  label: t('settings.profile.passwordStrength.fair') },
-    strong: { w: 'w-full', color: 'bg-emerald-500', label: t('settings.profile.passwordStrength.strong') },
+    strong: { w: 'w-full', color: 'bg-[#43D1AD]', label: t('settings.profile.passwordStrength.strong') },
   }
 
   return (
@@ -1348,7 +1348,7 @@ function ProfileTab() {
             type="submit"
             disabled={saving}
             className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
-              saved ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' : 'btn-primary'
+              saved ? 'bg-[#43D1AD]/15 text-[#43D1AD] border border-[#43D1AD]/20' : 'btn-primary'
             }`}
           >
             {saving  ? <><Loader size={14} className="animate-spin" /> {t('common.loading')}</>
@@ -1376,7 +1376,7 @@ function ProfileTab() {
                 <span className="text-lg font-bold text-purple-300">{plan}</span>
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                   isActive
-                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
+                    ? 'bg-[#43D1AD]/15 text-[#43D1AD] border border-[#43D1AD]/20'
                     : 'bg-[hsl(var(--secondary))] text-muted-foreground border border-[hsl(var(--border)/0.5)]'
                 }`}>
                   {isActive ? `● ${t('settings.subscription.active')}` : t('settings.subscription.inactive')}
@@ -1506,7 +1506,7 @@ function ProfileTab() {
             type="submit"
             disabled={savingPw || !currentPw || !newPw || !confirmPw}
             className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
-              savedPw ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' : 'btn-primary'
+              savedPw ? 'bg-[#43D1AD]/15 text-[#43D1AD] border border-[#43D1AD]/20' : 'btn-primary'
             }`}
           >
             {savingPw ? <><Loader size={14} className="animate-spin" /> {t('settings.profile.updatingPassword')}</>
@@ -1617,7 +1617,7 @@ function SecurityTab({ onSwitchToProfile }: { onSwitchToProfile: () => void }) {
           {t('settings.security.passwordHintSuffix')}
         </p>
         <div className="flex items-center gap-2 p-3 rounded-lg bg-[hsl(var(--secondary)/0.4)] border border-[hsl(var(--border)/0.6)]/40">
-          <CheckCircle size={16} className="text-emerald-400 shrink-0" />
+          <CheckCircle size={16} className="text-[#43D1AD] shrink-0" />
           <span className="text-sm text-foreground">{t('settings.security.passwordSet')}</span>
         </div>
       </div>
@@ -1663,8 +1663,8 @@ function SecurityTab({ onSwitchToProfile }: { onSwitchToProfile: () => void }) {
                 </div>
               </div>
               {s.current && (
-                <span className="text-xs text-emerald-400 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+                <span className="text-xs text-[#43D1AD] flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#43D1AD] inline-block" />
                   {t('settings.security.activeNow')}
                 </span>
               )}
@@ -1696,9 +1696,9 @@ function SecurityTab({ onSwitchToProfile }: { onSwitchToProfile: () => void }) {
                 {loginHistory.map(ev => (
                   <div key={ev.id} className="flex items-center justify-between px-5 py-3 gap-3">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${ev.success ? 'bg-emerald-500/12' : 'bg-red-500/12'}`}>
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${ev.success ? 'bg-[#43D1AD]/12' : 'bg-red-500/12'}`}>
                         {ev.success
-                          ? <CheckCircle size={13} className="text-emerald-400" />
+                          ? <CheckCircle size={13} className="text-[#43D1AD]" />
                           : <XCircle size={13} className="text-red-400" />
                         }
                       </div>
@@ -1743,7 +1743,7 @@ function SecurityTab({ onSwitchToProfile }: { onSwitchToProfile: () => void }) {
             {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
           <button onClick={copyApiKey} className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg bg-[hsl(var(--secondary)/0.5)] border border-[hsl(var(--border)/0.6)] text-muted-foreground hover:text-foreground transition">
-            {copied ? <CheckCircle size={16} className="text-emerald-400" /> : <Copy size={16} />}
+            {copied ? <CheckCircle size={16} className="text-[#43D1AD]" /> : <Copy size={16} />}
           </button>
         </div>
       </div>
@@ -2023,7 +2023,7 @@ function PreferencesTab() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `evpulse-export-${new Date().toISOString().slice(0, 10)}.json`
+      a.download = `roviqen-export-${new Date().toISOString().slice(0, 10)}.json`
       a.click()
       URL.revokeObjectURL(url)
     } finally {
@@ -2048,7 +2048,7 @@ function PreferencesTab() {
     <div className="space-y-4 w-full">
 
       {saved && (
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm">
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-[#43D1AD]/10 border border-[#43D1AD]/20 text-[#43D1AD] text-sm">
           <CheckCircle size={16} />
           {t('settings.preferences.saved')}
         </div>
@@ -2126,9 +2126,9 @@ function PreferencesTab() {
           <span className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border ${
             isStale
               ? 'text-amber-400 bg-amber-500/8 border-amber-500/20'
-              : 'text-emerald-400 bg-emerald-500/8 border-emerald-500/20'
+              : 'text-[#43D1AD] bg-[#43D1AD]/8 border-[#43D1AD]/20'
           }`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${isStale ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+            <span className={`w-1.5 h-1.5 rounded-full ${isStale ? 'bg-amber-400' : 'bg-[#43D1AD]'}`} />
             {isStale
               ? t('settings.preferences.ratesStale')
               : updatedAt
@@ -2142,8 +2142,8 @@ function PreferencesTab() {
 
         {/* Rate conversion suggestion banner */}
         {rateConvertSuggestion && (
-          <div className="mb-4 p-3 rounded-xl bg-sky-500/8 border border-sky-500/20 space-y-2">
-            <p className="text-xs font-semibold text-sky-300">
+          <div className="mb-4 p-3 rounded-xl bg-[#3B82F6]/8 border border-[#3B82F6]/20 space-y-2">
+            <p className="text-xs font-semibold text-[#3B82F6]">
               {t('settings.preferences.rateConvertTitle', { currency: rateConvertSuggestion.toCurrency })}
             </p>
             <p className="text-[11px] text-muted-foreground leading-relaxed">
@@ -2157,7 +2157,7 @@ function PreferencesTab() {
             <div className="flex gap-2">
               <button
                 onClick={applyRateSuggestion}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-sky-500/15 border border-sky-500/30 text-sky-300 hover:bg-sky-500/25 transition font-medium"
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#3B82F6]/15 border border-[#3B82F6]/30 text-[#3B82F6] hover:bg-[#3B82F6]/25 transition font-medium"
               >
                 <CheckCircle size={12} />
                 {t('settings.preferences.rateConvertApply', { newRate: `${rateConvertSuggestion.newRate.toFixed(2)} ${rateConvertSuggestion.toCurrency}/kWh` })}
@@ -2465,7 +2465,7 @@ function BillingTab() {
             <div className="flex items-center gap-2">
               <span className={`text-lg font-bold ${planInfo.color}`}>{planInfo.name}</span>
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                isActive ? 'bg-green-500/15 text-green-500' : 'bg-[hsl(var(--secondary))] text-muted-foreground'
+                isActive ? 'bg-[#43D1AD]/15 text-[#43D1AD]' : 'bg-[hsl(var(--secondary))] text-muted-foreground'
               }`}>
                 {isActive ? 'Active' : 'Inactive'}
               </span>

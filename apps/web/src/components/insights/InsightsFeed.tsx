@@ -44,14 +44,14 @@ const COLORS: Record<InsightSeverity, {
     glow: 'shadow-amber-500/20',
   },
   success: {
-    border: 'border-emerald-500/40', bg: 'bg-emerald-500/5', hoverBg: 'hover:bg-emerald-500/10',
-    icon: 'text-emerald-700 dark:text-emerald-400', badge: 'bg-emerald-500/15', badgeText: 'text-emerald-700 dark:text-emerald-300',
-    glow: 'shadow-emerald-500/20',
+    border: 'border-[#43D1AD]/40', bg: 'bg-[#43D1AD]/5', hoverBg: 'hover:bg-[#43D1AD]/10',
+    icon: 'text-[#43D1AD]', badge: 'bg-[#43D1AD]/15', badgeText: 'text-[#43D1AD]',
+    glow: 'shadow-[#43D1AD]/20',
   },
   info: {
-    border: 'border-sky-500/40', bg: 'bg-sky-500/5', hoverBg: 'hover:bg-sky-500/10',
-    icon: 'text-sky-700 dark:text-sky-400', badge: 'bg-sky-500/15', badgeText: 'text-sky-700 dark:text-sky-300',
-    glow: 'shadow-sky-500/20',
+    border: 'border-[#3B82F6]/40', bg: 'bg-[#3B82F6]/5', hoverBg: 'hover:bg-[#3B82F6]/10',
+    icon: 'text-[#3B82F6]', badge: 'bg-[#3B82F6]/15', badgeText: 'text-[#3B82F6]',
+    glow: 'shadow-[#3B82F6]/20',
   },
 };
 
@@ -115,7 +115,7 @@ function InsightDetailCard({ insight, vehicleId, onClose }: {
             </span>
             {(insight as any).confidence != null && (
               <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-                (insight as any).confidence >= 80 ? 'bg-emerald-500/15 text-emerald-400' :
+                (insight as any).confidence >= 80 ? 'bg-[#43D1AD]/15 text-[#43D1AD]' :
                 (insight as any).confidence >= 60 ? 'bg-amber-500/15 text-amber-400' :
                 'bg-[hsl(var(--secondary)/0.6)] text-muted-foreground'
               }`}>
@@ -156,7 +156,7 @@ function InsightDetailCard({ insight, vehicleId, onClose }: {
             {!feedbackSent ? (
               <div className="flex items-center gap-1 ml-auto">
                 <span className="text-[10px] text-muted-foreground mr-1">{t('dashboard.helpful')}</span>
-                <button onClick={() => sendFeedback(true)} className="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors">
+                <button onClick={() => sendFeedback(true)} className="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-[#43D1AD] hover:bg-[#43D1AD]/10 transition-colors">
                   <ThumbsUp className="w-3.5 h-3.5" />
                 </button>
                 <button onClick={() => sendFeedback(false)} className="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors">
@@ -359,7 +359,7 @@ export function InsightsFeed({ vehicleId }: Props) {
         </div>
       ) : sorted.length === 0 ? (
         <div className="py-12 text-center">
-          <CheckCircle2 size={28} className="mx-auto text-emerald-400 mb-2" />
+          <CheckCircle2 size={28} className="mx-auto text-[#43D1AD] mb-2" />
           <p className="text-sm text-muted-foreground">{t('insights.allClear', { defaultValue: 'All looking good!' })}</p>
         </div>
       ) : (

@@ -29,7 +29,7 @@ const EXPORTS: ExportCard[] = [
   {
     entity: 'trips',
     icon: Map,
-    color: '#8b5cf6',
+    color: '#8B8FCC',
     titleKey: 'export.trips.title',
     descKey: 'export.trips.desc',
     formats: ['csv', 'gpx', 'json'],
@@ -37,7 +37,7 @@ const EXPORTS: ExportCard[] = [
   {
     entity: 'charging',
     icon: Database,
-    color: '#34d399',
+    color: '#43D1AD',
     titleKey: 'export.charging.title',
     descKey: 'export.charging.desc',
     formats: ['csv', 'json'],
@@ -45,7 +45,7 @@ const EXPORTS: ExportCard[] = [
   {
     entity: 'telemetry',
     icon: FileText,
-    color: '#38bdf8',
+    color: '#3B82F6',
     titleKey: 'export.telemetry.title',
     descKey: 'export.telemetry.desc',
     formats: ['csv', 'json'],

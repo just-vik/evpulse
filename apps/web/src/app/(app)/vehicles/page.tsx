@@ -142,7 +142,7 @@ export default function VehiclesPage() {
                         />
                         <span
                           className={`text-[11px] font-medium ${
-                            online ? 'text-emerald-400' : 'text-muted-foreground'
+                            online ? 'text-[#43D1AD]' : 'text-muted-foreground'
                           }`}
                         >
                           {t(`status.${v.vehicleState ?? 'offline'}`, { defaultValue: t('status.offline') })}
@@ -153,7 +153,7 @@ export default function VehiclesPage() {
                     {/* Bottom stats */}
                     <div className="flex items-center justify-between mt-3 pt-3 border-t border-[hsl(var(--border)/0.7)]">
                       <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                        <Battery size={12} className="text-emerald-400" />
+                        <Battery size={12} className="text-[#43D1AD]" />
                         {v.odometer != null ? (
                           <span>{Math.round(v.odometer).toLocaleString()} {t('common.km')}</span>
                         ) : (

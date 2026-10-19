@@ -169,8 +169,8 @@ function ActionRow({
 
   return (
     <div className="flex items-start gap-2 p-3 rounded-xl border border-[hsl(var(--border)/0.55)] bg-[hsl(var(--secondary)/0.3)]">
-      <div className="w-7 h-7 rounded-lg bg-violet-500/12 flex items-center justify-center shrink-0 mt-0.5">
-        <Globe size={13} className="text-violet-400" />
+      <div className="w-7 h-7 rounded-lg bg-[#8B8FCC]/12 flex items-center justify-center shrink-0 mt-0.5">
+        <Globe size={13} className="text-[#8B8FCC]" />
       </div>
       <div className="flex-1 space-y-1.5 min-w-0">
         <div className="flex items-center gap-2">
@@ -331,7 +331,7 @@ export default function RuleEditorDrawer({ open, rule, vehicles, onClose, onSave
                   </div>
                   <button
                     onClick={addAction}
-                    className="flex items-center gap-1 text-xs font-medium text-violet-400 hover:text-violet-300 transition-colors px-2 py-1 rounded-lg hover:bg-violet-500/10"
+                    className="flex items-center gap-1 text-xs font-medium text-[#8B8FCC] hover:text-[#8B8FCC]/80 transition-colors px-2 py-1 rounded-lg hover:bg-[#8B8FCC]/10"
                   >
                     <Plus size={13} />
                     {t('ruleEditor.actions.addWebhook', { defaultValue: 'Webhook' })}

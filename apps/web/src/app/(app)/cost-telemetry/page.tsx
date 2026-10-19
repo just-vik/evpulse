@@ -136,9 +136,9 @@ export default function CostTelemetryPage() {
       label: t('pages.costTelemetry.metricTeslaCoverage'),
       value: td ? `${td.teslaCoveragePct.toFixed(1)}%` : '—',
       icon: <CheckCircle2 size={18} />,
-      color: 'text-emerald-400',
-      bg: 'bg-emerald-500/8 border-emerald-500/15',
-      glow: 'shadow-emerald-500/10',
+      color: 'text-[#43D1AD]',
+      bg: 'bg-[#43D1AD]/8 border-[#43D1AD]/15',
+      glow: 'shadow-[#43D1AD]/10',
     },
     {
       label: t('pages.costTelemetry.metricPendingRetries'),
@@ -160,9 +160,9 @@ export default function CostTelemetryPage() {
       label: t('pages.costTelemetry.metricMaxRetries'),
       value: td?.maxRetryAttempts ?? '—',
       icon: <TrendingUp size={18} />,
-      color: 'text-sky-400',
-      bg: 'bg-sky-500/8 border-sky-500/15',
-      glow: 'shadow-sky-500/10',
+      color: 'text-[#3B82F6]',
+      bg: 'bg-[#3B82F6]/8 border-[#3B82F6]/15',
+      glow: 'shadow-[#3B82F6]/10',
     },
   ];
 
@@ -289,12 +289,12 @@ export default function CostTelemetryPage() {
                       <td className="px-4 py-3">
                         <CostSourceBadge source={row.costSource} />
                       </td>
-                      <td className="px-4 py-3 font-semibold tabular-nums text-emerald-400">
+                      <td className="px-4 py-3 font-semibold tabular-nums text-[#C2F54A]">
                         {row.costTotal != null ? fmtMoney(Number(row.costTotal)) : (
                           <span className="text-muted-foreground">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 tabular-nums text-sky-400">
+                      <td className="px-4 py-3 tabular-nums text-[#43D1AD]">
                         {row.energyAddedKwh != null ? (
                           <span className="flex items-center gap-1">
                             <Zap size={11} className="opacity-70" />
@@ -473,12 +473,12 @@ function CostSourceBadge({ source }: { source: string | null | undefined }) {
 
 function costSourceBadgeClass(source: string | null | undefined): string {
   switch (source) {
-    case 'tesla_api':    return 'border-emerald-500/35 bg-emerald-500/12 text-emerald-300';
+    case 'tesla_api':    return 'border-[#43D1AD]/35 bg-[#43D1AD]/12 text-[#43D1AD]';
     case 'scope_missing':return 'border-amber-500/35 bg-amber-500/12 text-amber-200';
-    case 'manual':       return 'border-violet-500/35 bg-violet-500/12 text-violet-200';
+    case 'manual':       return 'border-[#8B8FCC]/35 bg-[#8B8FCC]/12 text-[#8B8FCC]';
     case 'tariff':
     case 'supercharger':
-    case 'tesla_sc':     return 'border-sky-500/35 bg-sky-500/12 text-sky-200';
+    case 'tesla_sc':     return 'border-[#3B82F6]/35 bg-[#3B82F6]/12 text-[#3B82F6]';
     default:
       if (!source) return 'border-[hsl(var(--border)/0.5)] bg-[hsl(var(--secondary)/0.35)] text-muted-foreground';
       return 'border-[hsl(var(--border)/0.5)] bg-[hsl(var(--secondary)/0.35)] text-foreground';

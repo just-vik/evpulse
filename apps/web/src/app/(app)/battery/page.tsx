@@ -41,33 +41,33 @@ function PackDiagnosticsSection({
     >
       <div className="p-5">
         <div className="flex items-center gap-2 mb-4">
-          <Cpu size={16} className="text-violet-400" />
+          <Cpu size={16} className="text-[#8B8FCC]" />
           <h3 className="text-base font-semibold text-foreground">{t('battery.diagnostics.title')}</h3>
         </div>
 
         <div className="grid grid-cols-3 gap-3">
           {/* Pack voltage */}
-          <div className="rounded-xl bg-violet-500/8 border border-violet-500/15 p-3">
+          <div className="rounded-xl bg-[#8B8FCC]/8 border border-[#8B8FCC]/15 p-3">
             <p className="text-[10px] text-muted-foreground mb-1">{t('battery.diagnostics.packVoltage')}</p>
-            <p className="text-xl font-bold text-violet-300 leading-tight">
+            <p className="text-xl font-bold text-[#8B8FCC] leading-tight">
               {hasVoltage ? packVoltageV!.toFixed(1) : '—'}
               {hasVoltage && <span className="text-sm font-normal text-muted-foreground ml-1">V</span>}
             </p>
           </div>
 
           {/* Avg cell voltage — calculated, not per-cell measured */}
-          <div className="rounded-xl bg-sky-500/8 border border-sky-500/15 p-3">
+          <div className="rounded-xl bg-[#3B82F6]/8 border border-[#3B82F6]/15 p-3">
             <p className="text-[10px] text-muted-foreground mb-1">{t('battery.diagnostics.avgCellVoltage')}</p>
-            <p className="text-xl font-bold text-sky-300 leading-tight">
+            <p className="text-xl font-bold text-[#3B82F6] leading-tight">
               {avgCellV != null ? avgCellV.toFixed(4) : '—'}
               {avgCellV != null && <span className="text-sm font-normal text-muted-foreground ml-1">V</span>}
             </p>
           </div>
 
           {/* SOC */}
-          <div className="rounded-xl bg-emerald-500/8 border border-emerald-500/15 p-3">
+          <div className="rounded-xl bg-[#C2F54A]/8 border border-[#C2F54A]/15 p-3">
             <p className="text-[10px] text-muted-foreground mb-1">{t('battery.diagnostics.stateOfCharge')}</p>
-            <p className="text-xl font-bold text-emerald-300 leading-tight">
+            <p className="text-xl font-bold text-[#C2F54A] leading-tight">
               {soc != null ? Math.round(soc) : '—'}
               {soc != null && <span className="text-sm font-normal text-muted-foreground ml-1">%</span>}
             </p>
@@ -312,17 +312,17 @@ export default function BatteryPage() {
 
   // Metric card color configs
   const sohCardColors = isLowData || isCalibrating
-    ? { bg: 'bg-sky-500/8 border-sky-500/15 shadow-sky-500/10', icon: 'text-sky-400', value: 'text-sky-300' }
+    ? { bg: 'bg-[#3B82F6]/8 border-[#3B82F6]/15 shadow-[#3B82F6]/10', icon: 'text-[#3B82F6]', value: 'text-[#3B82F6]' }
     : sohStatus === 'good'
-      ? { bg: 'bg-emerald-500/8 border-emerald-500/15 shadow-emerald-500/10', icon: 'text-emerald-400', value: 'text-emerald-300' }
+      ? { bg: 'bg-[#C2F54A]/8 border-[#C2F54A]/15 shadow-[#C2F54A]/10', icon: 'text-[#C2F54A]', value: 'text-[#C2F54A]' }
       : sohStatus === 'warning'
         ? { bg: 'bg-amber-500/8 border-amber-500/15 shadow-amber-500/10', icon: 'text-amber-400', value: 'text-amber-300' }
         : { bg: 'bg-rose-500/8 border-rose-500/15 shadow-rose-500/10', icon: 'text-rose-400', value: 'text-rose-300' };
 
   const degradationCardColors = isLowData
-    ? { bg: 'bg-violet-500/8 border-violet-500/15 shadow-violet-500/10', icon: 'text-violet-400', value: 'text-violet-300' }
+    ? { bg: 'bg-[#8B8FCC]/8 border-[#8B8FCC]/15 shadow-[#8B8FCC]/10', icon: 'text-[#8B8FCC]', value: 'text-[#8B8FCC]' }
     : health && health.degradationPercent < 10
-      ? { bg: 'bg-emerald-500/8 border-emerald-500/15 shadow-emerald-500/10', icon: 'text-emerald-400', value: 'text-emerald-300' }
+      ? { bg: 'bg-[#43D1AD]/8 border-[#43D1AD]/15 shadow-[#43D1AD]/10', icon: 'text-[#43D1AD]', value: 'text-[#43D1AD]' }
       : health && health.degradationPercent < 20
         ? { bg: 'bg-amber-500/8 border-amber-500/15 shadow-amber-500/10', icon: 'text-amber-400', value: 'text-amber-300' }
         : { bg: 'bg-rose-500/8 border-rose-500/15 shadow-rose-500/10', icon: 'text-rose-400', value: 'text-rose-300' };
@@ -347,11 +347,11 @@ export default function BatteryPage() {
             <motion.div
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="p-4 rounded-2xl flex items-start gap-3 mb-6 bg-sky-500/10 border border-sky-500/20"
+              className="p-4 rounded-2xl flex items-start gap-3 mb-6 bg-[#3B82F6]/10 border border-[#3B82F6]/20"
             >
-              <Loader size={20} className="text-sky-400 flex-shrink-0 mt-0.5 animate-spin" />
+              <Loader size={20} className="text-[#3B82F6] flex-shrink-0 mt-0.5 animate-spin" />
               <div>
-                <p className="font-semibold text-sky-100">{t('battery.calibrating')}</p>
+                <p className="font-semibold text-foreground">{t('battery.calibrating')}</p>
                 <p className="text-sm text-muted-foreground mt-1">
                   {health.chargesNeededForHighBaseline != null && health.chargesNeededForHighBaseline > 0
                     ? t('battery.calibratingNeedCharges', { count: health.chargesNeededForHighBaseline })
@@ -380,9 +380,9 @@ export default function BatteryPage() {
                 <motion.div
                   initial={{ opacity: 0, y: -12 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="p-3 rounded-xl flex items-center gap-2.5 mb-3 bg-violet-500/8 border border-violet-500/15"
+                  className="p-3 rounded-xl flex items-center gap-2.5 mb-3 bg-[#8B8FCC]/8 border border-[#8B8FCC]/15"
                 >
-                  <Info size={15} className="text-violet-400 flex-shrink-0" />
+                  <Info size={15} className="text-[#8B8FCC] flex-shrink-0" />
                   <p className="text-xs text-muted-foreground">
                     {t('battery.needMoreChargesForHigh', { count: health.chargesNeededForHighBaseline })}
                   </p>
@@ -394,17 +394,17 @@ export default function BatteryPage() {
                 animate={{ opacity: 1, y: 0 }}
                 className={`p-4 rounded-2xl flex items-start gap-3 mb-6 ${
                   sohStatus === 'good'
-                    ? 'bg-emerald-500/10 border border-emerald-500/20'
+                    ? 'bg-[#43D1AD]/10 border border-[#43D1AD]/20'
                     : sohStatus === 'warning'
                       ? 'bg-amber-500/10 border border-amber-500/20'
                       : 'bg-rose-500/10 border border-rose-500/20'
                 }`}
               >
                 {sohStatus === 'good'
-                  ? <CheckCircle size={20} className="text-emerald-400 flex-shrink-0 mt-0.5" />
+                  ? <CheckCircle size={20} className="text-[#43D1AD] flex-shrink-0 mt-0.5" />
                   : <AlertTriangle size={20} className={`flex-shrink-0 mt-0.5 ${sohStatus === 'warning' ? 'text-amber-400' : 'text-rose-400'}`} />}
                 <div>
-                  <p className={`font-semibold ${sohStatus === 'good' ? 'text-emerald-100' : sohStatus === 'warning' ? 'text-amber-100' : 'text-rose-100'}`}>
+                  <p className={`font-semibold ${sohStatus === 'good' ? 'text-foreground' : sohStatus === 'warning' ? 'text-amber-100' : 'text-rose-100'}`}>
                     {sohStatus === 'good' ? t('battery.healthOptimal') : sohStatus === 'warning' ? t('battery.healthModerate') : t('battery.healthHigh')}
                   </p>
                   <p className="text-sm text-muted-foreground mt-1">
@@ -446,14 +446,14 @@ export default function BatteryPage() {
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="rounded-2xl border p-4 shadow-lg bg-sky-500/8 border-sky-500/15 shadow-sky-500/10"
+              className="rounded-2xl border p-4 shadow-lg bg-[#43D1AD]/8 border-[#43D1AD]/15 shadow-[#43D1AD]/10"
             >
               <div className="flex items-center gap-2 mb-1">
-                <Zap size={15} className="text-sky-400" />
+                <Zap size={15} className="text-[#43D1AD]" />
                 <span className="text-xs text-muted-foreground">{t('battery.estimatedCapacity')}</span>
               </div>
               <div className="flex items-baseline gap-1 mt-2">
-                <span className="text-2xl font-bold text-sky-300">
+                <span className="text-2xl font-bold text-[#43D1AD]">
                   {isLowData ? '—' : capacityDisplayLabel}
                 </span>
                 {!isLowData && <span className="text-sm text-muted-foreground">kWh</span>}
@@ -550,7 +550,7 @@ export default function BatteryPage() {
             >
               <div className="p-5">
                 <div className="flex items-center gap-2 mb-4">
-                  <BarChart2 size={16} className="text-violet-400" />
+                  <BarChart2 size={16} className="text-[#8B8FCC]" />
                   <h3 className="text-base font-semibold text-foreground">{t('battery.sohByMethod')}</h3>
                 </div>
                 {(() => {
@@ -559,19 +559,19 @@ export default function BatteryPage() {
                       label:    t('battery.tripBased'),
                       subtitle: t('battery.tripBasedHint', { defaultValue: 'По динамике напряжения в поездках' }),
                       value:    health.tripSoh,
-                      color:    'bg-sky-500',
+                      color:    'bg-[#3B82F6]',
                     },
                     {
                       label:    t('battery.chargingBased'),
                       subtitle: t('battery.chargingBasedHint', { defaultValue: 'Точнее при зарядке до 90%+' }),
                       value:    health.chargingSoh,
-                      color:    'bg-emerald-500',
+                      color:    'bg-[#43D1AD]',
                     },
                     {
                       label:    t('battery.weightedResult'),
                       subtitle: t('battery.weightedResultHint', { defaultValue: 'Взвешенное среднее обоих методов' }),
                       value:    health.sohPercent > 100 ? 100 : health.sohPercent,
-                      color:    'bg-violet-500',
+                      color:    'bg-[#C2F54A]',
                     },
                   ]
                   const allSame = methods.every(m => m.value != null && Math.abs((m.value ?? 0) - (methods[2].value ?? 0)) < 0.1)
@@ -579,7 +579,7 @@ export default function BatteryPage() {
                     return (
                       <div className="flex flex-col items-center justify-center py-4 gap-2">
                         <div className="w-full h-2 rounded-full bg-[hsl(var(--border)/0.5)]">
-                          <div className="h-full rounded-full bg-violet-500" style={{ width: `${Math.min(100, methods[2].value)}%` }} />
+                          <div className="h-full rounded-full bg-[#C2F54A]" style={{ width: `${Math.min(100, methods[2].value)}%` }} />
                         </div>
                         <p className="text-sm text-muted-foreground">
                           {t('battery.methodsConverge', { value: `${methods[2].value.toFixed(1)}%` })}
@@ -623,7 +623,7 @@ export default function BatteryPage() {
                   <div className="flex flex-col gap-2 py-2">
                     <div className="flex items-center justify-between py-2.5">
                       <span className="text-[11px] text-muted-foreground">{t('battery.currentSoh')}</span>
-                      <span className="font-semibold text-sm text-emerald-400">{Math.min(100, health.sohPercent).toFixed(1)}%</span>
+                      <span className="font-semibold text-sm text-[#C2F54A]">{Math.min(100, health.sohPercent).toFixed(1)}%</span>
                     </div>
                     <p className="text-xs text-muted-foreground italic py-2">{t('battery.noDegradationFound')}</p>
                   </div>
@@ -632,10 +632,10 @@ export default function BatteryPage() {
                     {[
                       { label: t('battery.currentSoh'),
                         value: `${Math.min(100, health.sohPercent).toFixed(1)}%`,
-                        color: 'text-emerald-400' },
+                        color: 'text-[#C2F54A]' },
                       { label: t('battery.in1Year'),
                         value: isUnreliable || trend.projectedSoh1Year == null ? '—' : `${trend.projectedSoh1Year.toFixed(1)}%`,
-                        color: isUnreliable ? 'text-muted-foreground/40' : 'text-sky-400' },
+                        color: isUnreliable ? 'text-muted-foreground/40' : 'text-[#43D1AD]' },
                       { label: t('battery.in5Years'),
                         value: isUnreliable || trend.projectedSoh5Year == null ? '—' : `${trend.projectedSoh5Year.toFixed(1)}%`,
                         color: isUnreliable ? 'text-muted-foreground/40' : 'text-amber-400' },

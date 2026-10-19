@@ -27,26 +27,30 @@ export function EfficiencyCard({ vehicleId }: Props) {
   return (
     <BaseCard>
       <div className="flex items-start justify-between mb-4">
-        <div>
+        <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
             {t('cards.efficiency.title')}
           </p>
-          <h3 className="text-2xl font-bold text-violet-400 tracking-tight tabular-nums">
-            {isLoading || !displayValue ? '—' : displayValue}
-          </h3>
+          {isLoading ? (
+            <div className="h-8 w-28 rounded-lg bg-[hsl(var(--muted)/0.5)] animate-pulse" />
+          ) : (
+            <h3 className="text-2xl font-bold text-[#43D1AD] tracking-tight tabular-nums">
+              {displayValue ?? '—'}
+            </h3>
+          )}
         </div>
         <div className="flex items-start gap-2">
           {/* Unit toggle */}
           {whKm != null && (
             <button
               onClick={() => setUnit(u => u === 'whkm' ? 'kwh100' : 'whkm')}
-              className="text-[10px] px-2 py-0.5 rounded-md bg-violet-500/15 text-violet-300 hover:bg-violet-500/25 transition-colors font-medium tabular-nums leading-5"
+              className="text-[10px] px-2 py-0.5 rounded-md bg-[#43D1AD]/15 text-[#43D1AD] hover:bg-[#43D1AD]/25 transition-colors font-medium tabular-nums leading-5"
               title={unit === 'whkm' ? 'Switch to kWh/100km' : 'Switch to Wh/km'}
             >
               {unit === 'whkm' ? 'kWh/100' : 'Wh/km'}
             </button>
           )}
-          <div className="w-9 h-9 rounded-xl bg-violet-500/20 flex items-center justify-center text-violet-300 shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-[#43D1AD]/15 flex items-center justify-center text-[#43D1AD] shrink-0">
             <LeafIcon size={20} />
           </div>
         </div>

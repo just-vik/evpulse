@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy — EVPulse',
-  description: 'How EVPulse collects, uses, and protects your data.',
+  title: 'Privacy Policy — ROVIQEN',
+  description: 'How ROVIQEN collects, uses, and protects your data.',
 };
 
 const EFFECTIVE_DATE = 'April 9, 2026';
@@ -18,7 +18,7 @@ export default function PrivacyPolicyPage() {
         {/* Header */}
         <div className="mb-12">
           <Link href="/" className="text-[hsl(215_14%_50%)] text-sm hover:text-[hsl(215_14%_75%)] transition-colors">
-            ← EVPulse
+            ← ROVIQEN
           </Link>
           <h1 className="mt-6 text-3xl font-bold text-white">Privacy Policy</h1>
           <p className="mt-2 text-sm text-[hsl(215_14%_50%)]">Effective date: {EFFECTIVE_DATE}</p>
@@ -28,7 +28,7 @@ export default function PrivacyPolicyPage() {
 
           <Section title="1. Who we are">
             <p>
-              EVPulse (&ldquo;we&rdquo;, &ldquo;our&rdquo;, &ldquo;us&rdquo;) is an independent third-party
+              ROVIQEN (&ldquo;we&rdquo;, &ldquo;our&rdquo;, &ldquo;us&rdquo;) is an independent third-party
               analytics service for Tesla owners. We are not affiliated with Tesla, Inc.
               Our service is accessible at <a href={APP_URL} className="text-blue-400 hover:underline">{APP_URL}</a>.
             </p>
@@ -39,7 +39,7 @@ export default function PrivacyPolicyPage() {
             <p>We collect only the data required to provide the service:</p>
             <ul className="list-disc pl-5 space-y-1.5">
               <li><strong>Account data</strong> — email address and hashed password (bcrypt), created when you register.</li>
-              <li><strong>Tesla OAuth tokens</strong> — access and refresh tokens issued by Tesla after you authorise EVPulse in the Tesla app. Tokens are encrypted at rest using AES-256-GCM and never shared with third parties.</li>
+              <li><strong>Tesla OAuth tokens</strong> — access and refresh tokens issued by Tesla after you authorise ROVIQEN in the Tesla app. Tokens are encrypted at rest using AES-256-GCM and never shared with third parties.</li>
               <li><strong>Telemetry data</strong> — GPS coordinates, speed, battery level (SoC), power draw, odometer, and shift state streamed from your vehicle via Tesla Fleet Telemetry or the Tesla REST API. This data is stored in our database and used exclusively to generate your trip, charging, and battery analytics.</li>
               <li><strong>Usage data</strong> — standard server logs (IP address, user-agent, request path, timestamp) retained for up to 30 days for security and debugging purposes.</li>
             </ul>
@@ -143,7 +143,7 @@ export default function PrivacyPolicyPage() {
 
           <Section title="9. Children">
             <p>
-              EVPulse is not directed at children under 16. We do not knowingly collect data from minors.
+              ROVIQEN is not directed at children under 16. We do not knowingly collect data from minors.
               If you believe a minor has registered, contact us and we will delete the account promptly.
             </p>
           </Section>
@@ -160,8 +160,8 @@ export default function PrivacyPolicyPage() {
 
         {/* Footer */}
         <div className="mt-16 pt-8 border-t border-[hsl(215_20%_15%)] text-center text-xs text-[hsl(215_14%_40%)]">
-          <p>EVPulse · <a href={`mailto:${CONTACT_EMAIL}`} className="hover:text-[hsl(215_14%_60%)] transition-colors">{CONTACT_EMAIL}</a></p>
-          <p className="mt-1">© {new Date().getFullYear()} EVPulse. All rights reserved.</p>
+          <p>ROVIQEN · <a href={`mailto:${CONTACT_EMAIL}`} className="hover:text-[hsl(215_14%_60%)] transition-colors">{CONTACT_EMAIL}</a></p>
+          <p className="mt-1">© {new Date().getFullYear()} ROVIQEN. All rights reserved.</p>
         </div>
 
       </div>

@@ -138,7 +138,7 @@ export function ScheduledCommandsSection({ vehicleId, vehicles }: Props) {
       <div className="flex items-center justify-between mb-4">
         <div>
           <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
-            <Clock size={14} className="text-violet-400" />
+            <Clock size={14} className="text-[#8B8FCC]" />
             {t('settings.vehicles.schedules.title')}
           </p>
           <p className="text-[11px] text-muted-foreground mt-0.5">
@@ -267,7 +267,7 @@ export function ScheduledCommandsSection({ vehicleId, vehicles }: Props) {
                   disabled={toggleMutation.isPending}
                   className={`text-xs px-2 py-1 rounded-lg border transition ${
                     a.enabled
-                      ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                      ? 'bg-[#43D1AD]/10 border-[#43D1AD]/20 text-[#43D1AD]'
                       : 'border-[hsl(var(--border)/0.85)] text-muted-foreground'
                   }`}
                 >

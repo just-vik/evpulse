@@ -72,7 +72,7 @@ export function AIActivityFeed({ vehicleId }: Props) {
                   className={`flex items-center gap-3 px-4 py-2.5 ${i < data.length - 1 ? 'border-b border-[hsl(var(--border)/0.5)]' : ''}`}
                 >
                   {item.success
-                    ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                    ? <CheckCircle2 className="w-3.5 h-3.5 text-[#43D1AD] flex-shrink-0" />
                     : <XCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />}
                   <p className="text-xs text-foreground flex-1">
                     {t(`aiCommands.${item.action}`, { defaultValue: item.action })}

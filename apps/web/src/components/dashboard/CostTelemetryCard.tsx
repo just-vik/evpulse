@@ -32,14 +32,14 @@ export function CostTelemetryCard({ vehicleId }: Props) {
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
             {t('pages.costTelemetry.card.title')}
           </p>
-          <h3 className="text-2xl font-bold text-sky-400 tracking-tight tabular-nums">
+          <h3 className="text-2xl font-bold text-[#3B82F6] tracking-tight tabular-nums">
             {data ? `${data.teslaCoveragePct.toFixed(0)}%` : isLoading ? '…' : '—'}
           </h3>
           <p className="text-[11px] text-muted-foreground mt-1">
             {t('pages.costTelemetry.card.coverageHint')}
           </p>
         </div>
-        <div className="w-9 h-9 rounded-xl bg-sky-500/20 flex items-center justify-center text-sky-300 shrink-0">
+        <div className="w-9 h-9 rounded-xl bg-[#3B82F6]/20 flex items-center justify-center text-[#3B82F6] shrink-0">
           <Activity className="w-5 h-5" />
         </div>
       </div>

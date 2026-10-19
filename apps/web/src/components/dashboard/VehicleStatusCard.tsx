@@ -22,13 +22,13 @@ const STATE_CONFIG: Record<string, {
   border: string;
   text: string;
 }> = {
-  driving:  { icon: Car,          bg: 'bg-emerald-500/15', border: 'border-emerald-500/30', text: 'text-emerald-700 dark:text-emerald-300' },
-  stopped:  { icon: Car,          bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-700 dark:text-emerald-300' },
-  charging: { icon: Zap,          bg: 'bg-blue-500/15',    border: 'border-blue-500/30',    text: 'text-blue-700 dark:text-blue-300'    },
-  parked:   { icon: ParkingCircle,bg: 'bg-slate-500/15',   border: 'border-slate-500/30',   text: 'text-muted-foreground'   },
-  sleeping: { icon: Moon,         bg: 'bg-indigo-500/10',  border: 'border-indigo-500/20',  text: 'text-indigo-700 dark:text-indigo-300'  },
-  waking:   { icon: Car,          bg: 'bg-amber-500/10',   border: 'border-amber-500/25',   text: 'text-amber-700 dark:text-amber-300'    },
-  offline:  { icon: WifiOff,      bg: 'bg-red-500/10',     border: 'border-red-500/20',     text: 'text-red-700 dark:text-red-400'      },
+  driving:  { icon: Car,          bg: 'bg-[#43D1AD]/15',  border: 'border-[#43D1AD]/30',  text: 'text-[#43D1AD]'          },
+  stopped:  { icon: Car,          bg: 'bg-[#43D1AD]/10',  border: 'border-[#43D1AD]/20',  text: 'text-[#43D1AD]'          },
+  charging: { icon: Zap,          bg: 'bg-[#C2F54A]/10',  border: 'border-[#C2F54A]/25',  text: 'text-[#C2F54A]'          },
+  parked:   { icon: ParkingCircle,bg: 'bg-slate-500/15',  border: 'border-slate-500/30',  text: 'text-muted-foreground'   },
+  sleeping: { icon: Moon,         bg: 'bg-indigo-500/10', border: 'border-indigo-500/20', text: 'text-indigo-700 dark:text-indigo-300' },
+  waking:   { icon: Car,          bg: 'bg-amber-500/10',  border: 'border-amber-500/25',  text: 'text-amber-700 dark:text-amber-300'  },
+  offline:  { icon: WifiOff,      bg: 'bg-red-500/10',    border: 'border-red-500/20',    text: 'text-red-700 dark:text-red-400'      },
 };
 
 const DEFAULT_STATE_CFG = { icon: Gauge, bg: 'bg-slate-500/10', border: 'border-slate-600/30', text: 'text-muted-foreground' };
@@ -155,29 +155,29 @@ export function VehicleStatusCard({ vehicleId }: Props) {
             transition={{ duration: 0.22 }}
             className="overflow-hidden"
           >
-            <div className="stat-grid grid grid-cols-3 gap-2 p-3 rounded-xl bg-emerald-500/8 border border-emerald-500/20">
+            <div className="stat-grid grid grid-cols-3 gap-2 p-3 rounded-xl bg-[#43D1AD]/8 border border-[#43D1AD]/20">
               <div className="text-center">
-                <p className="text-[9px] uppercase tracking-wider text-emerald-400/70 mb-0.5">{t('vehicleStatus.speed')}</p>
-                <p className="text-2xl font-bold text-emerald-300 tabular-nums leading-none">
+                <p className="text-[9px] uppercase tracking-wider text-[#43D1AD]/70 mb-0.5">{t('vehicleStatus.speed')}</p>
+                <p className="text-2xl font-bold text-[#43D1AD] tabular-nums leading-none">
                   {status.speed != null ? Math.round(status.speed) : '—'}
                 </p>
-                <p className="text-[9px] text-emerald-400/60 mt-0.5">km/h</p>
+                <p className="text-[9px] text-[#43D1AD]/60 mt-0.5">km/h</p>
               </div>
-              <div className="text-center border-x border-emerald-500/15">
-                <p className="text-[9px] uppercase tracking-wider text-emerald-400/70 mb-0.5">{t('vehicleStatus.power')}</p>
-                <p className={`text-xl font-bold tabular-nums leading-none ${(status.power ?? 0) < 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+              <div className="text-center border-x border-[#43D1AD]/15">
+                <p className="text-[9px] uppercase tracking-wider text-[#43D1AD]/70 mb-0.5">{t('vehicleStatus.power')}</p>
+                <p className={`text-xl font-bold tabular-nums leading-none ${(status.power ?? 0) < 0 ? 'text-[#43D1AD]' : 'text-amber-400'}`}>
                   {status.power != null ? `${status.power > 0 ? '+' : ''}${status.power.toFixed(1)}` : '—'}
                 </p>
-                <p className="text-[9px] text-emerald-400/60 mt-0.5">
+                <p className="text-[9px] text-[#43D1AD]/60 mt-0.5">
                   {status.power != null && status.power < 0 ? t('vehicleStatus.regen', { defaultValue: 'regen' }) : 'kW'}
                 </p>
               </div>
               <div className="text-center">
-                <p className="text-[9px] uppercase tracking-wider text-emerald-400/70 mb-0.5">{t('vehicleStatus.outsideTemp')}</p>
-                <p className="text-xl font-bold text-sky-300 tabular-nums leading-none">
+                <p className="text-[9px] uppercase tracking-wider text-[#43D1AD]/70 mb-0.5">{t('vehicleStatus.outsideTemp')}</p>
+                <p className="text-xl font-bold text-[#43D1AD] tabular-nums leading-none">
                   {(status as any).outsideTemp != null ? (status as any).outsideTemp.toFixed(1) : '—'}
                 </p>
-                <p className="text-[9px] text-emerald-400/60 mt-0.5">°C</p>
+                <p className="text-[9px] text-[#43D1AD]/60 mt-0.5">°C</p>
               </div>
             </div>
           </motion.div>
@@ -195,29 +195,29 @@ export function VehicleStatusCard({ vehicleId }: Props) {
             transition={{ duration: 0.22 }}
             className="overflow-hidden"
           >
-            <div className="stat-grid grid grid-cols-3 gap-2 p-3 rounded-xl bg-blue-500/8 border border-blue-500/20">
+            <div className="stat-grid grid grid-cols-3 gap-2 p-3 rounded-xl bg-[#C2F54A]/8 border border-[#C2F54A]/20">
               <div className="text-center">
-                <p className="text-[9px] uppercase tracking-wider text-blue-400/70 mb-0.5">SOC</p>
-                <p className="text-2xl font-bold text-blue-300 tabular-nums leading-none">
+                <p className="text-[9px] uppercase tracking-wider text-[#C2F54A]/70 mb-0.5">SOC</p>
+                <p className="text-2xl font-bold text-[#C2F54A] tabular-nums leading-none">
                   {status.soc != null ? Math.round(status.soc) : '—'}
                 </p>
-                <p className="text-[9px] text-blue-400/60 mt-0.5">
+                <p className="text-[9px] text-[#C2F54A]/60 mt-0.5">
                   {(status as any).chargeLimit != null ? `→ ${Math.round((status as any).chargeLimit)}%` : '%'}
                 </p>
               </div>
-              <div className="text-center border-x border-blue-500/15">
-                <p className="text-[9px] uppercase tracking-wider text-blue-400/70 mb-0.5">{t('vehicleStatus.power')}</p>
-                <p className="text-xl font-bold text-emerald-400 tabular-nums leading-none">
+              <div className="text-center border-x border-[#C2F54A]/15">
+                <p className="text-[9px] uppercase tracking-wider text-[#C2F54A]/70 mb-0.5">{t('vehicleStatus.power')}</p>
+                <p className="text-xl font-bold text-[#C2F54A] tabular-nums leading-none">
                   {status.power != null ? `+${Math.abs(status.power).toFixed(1)}` : '—'}
                 </p>
-                <p className="text-[9px] text-blue-400/60 mt-0.5">kW</p>
+                <p className="text-[9px] text-[#C2F54A]/60 mt-0.5">kW</p>
               </div>
               <div className="text-center">
-                <p className="text-[9px] uppercase tracking-wider text-blue-400/70 mb-0.5">{t('vehicleStatus.range')}</p>
-                <p className="text-xl font-bold text-sky-300 tabular-nums leading-none">
+                <p className="text-[9px] uppercase tracking-wider text-[#C2F54A]/70 mb-0.5">{t('vehicleStatus.range')}</p>
+                <p className="text-xl font-bold text-[#43D1AD] tabular-nums leading-none">
                   {rangeKm != null ? Math.round(rangeKm) : '—'}
                 </p>
-                <p className="text-[9px] text-blue-400/60 mt-0.5">km</p>
+                <p className="text-[9px] text-[#C2F54A]/60 mt-0.5">km</p>
               </div>
             </div>
           </motion.div>
@@ -247,11 +247,11 @@ function SocHero({ soc, rangeKm, chargeLimit, units, label, dimmed, t }: {
 }) {
   const pct = soc != null ? Math.round(soc) : null;
   const barColor = pct == null ? 'from-slate-500 to-slate-400'
-    : pct > 30 ? 'from-blue-500 to-emerald-400'
+    : pct > 30 ? 'from-[#43D1AD] to-[#C2F54A]'
     : pct > 10 ? 'from-amber-500 to-orange-400'
     : 'from-red-500 to-red-400';
   const iconColor = pct == null ? 'text-slate-400'
-    : pct > 30 ? 'text-emerald-400'
+    : pct > 30 ? 'text-[#C2F54A]'
     : pct > 10 ? 'text-amber-400'
     : 'text-red-400';
   const range = rangeKm != null

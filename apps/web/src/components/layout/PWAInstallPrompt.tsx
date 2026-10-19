@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Share } from 'lucide-react';
-import { EVPulseMark } from '@/components/branding/EVPulseMark';
+import { RoviqenMark } from '@/components/branding/RoviqenMark';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -75,10 +75,10 @@ export function PWAInstallPrompt() {
         <div className="rounded-xl bg-slate-800 border border-slate-700 shadow-2xl p-4">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-xl overflow-hidden border border-cyan-500/20 flex-shrink-0 bg-[#0a0f18] flex items-center justify-center p-0.5">
-              <EVPulseMark size={36} variant="soft" />
+              <RoviqenMark size={36} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-white text-sm">Install EVPulse</p>
+              <p className="font-semibold text-white text-sm">Install ROVIQEN</p>
               {isIOS ? (
                 <p className="text-slate-400 text-xs mt-0.5">
                   Tap <Share className="inline w-3 h-3" /> then "Add to Home Screen"
