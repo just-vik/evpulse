@@ -38,7 +38,10 @@ export function computeParkingSocGaps(trips: TripLike[]): ParkingGap[] {
     const startB = new Date(b.startTime).getTime()
     const hours = (startB - endA) / 3_600_000
     if (hours < 0.5 || hours > 96) continue
-    const lossPct = a.endSoc! - b.startSoc!
+    const endSoc = a.endSoc!
+    const startSoc = b.startSoc!
+    if (endSoc < 0 || endSoc > 100 || startSoc < 0 || startSoc > 100) continue
+    const lossPct = endSoc - startSoc
     if (lossPct < 0.5) continue
     const perHr = lossPct / hours
     if (perHr > MAX_DRAIN_RATE_PER_HR) continue

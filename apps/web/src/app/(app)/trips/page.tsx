@@ -824,7 +824,7 @@ export default function TripsPage() {
                     <span className="text-[10px] text-muted-foreground/50 hidden sm:inline truncate">{t('trips.parkingLossHint')}</span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0 ml-2">
-                    <span className="text-[11px] font-semibold tabular-nums text-foreground/70">−{totalLoss.toFixed(1)}% · {avgPerHr.toFixed(2)}%/h · {parkingGaps.length} {t('trips.parkingGapsCount')}</span>
+                    <span className="text-[11px] font-semibold tabular-nums text-foreground/70">{avgPerHr.toFixed(2)}%/h · {parkingGaps.length} {t('trips.parkingGapsCount')} · <span className="font-normal opacity-70">−{totalLoss.toFixed(1)}%</span></span>
                     <ChevronDown size={12} className={`text-muted-foreground transition-transform ${drainsOpen ? 'rotate-180' : ''}`} />
                   </div>
                 </button>
