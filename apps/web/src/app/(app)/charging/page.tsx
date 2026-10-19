@@ -1117,11 +1117,11 @@ export default function ChargingPage() {
                     <div>
                       <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">SOC</p>
                       <p className="text-sm font-semibold text-foreground tabular-nums">
-                        {session.startSoc != null ? `${Math.round(Number(session.startSoc))}%` : '—'}
-                        {session.startSoc != null && session.endSoc != null && (
+                        {session.startSoc != null && Number(session.startSoc) > 0 ? `${Math.round(Number(session.startSoc))}%` : '—'}
+                        {session.startSoc != null && Number(session.startSoc) > 0 && session.endSoc != null && (
                           <span className="text-muted-foreground mx-0.5">→</span>
                         )}
-                        {session.endSoc != null ? `${Math.round(Number(session.endSoc))}%` : ''}
+                        {session.endSoc != null && Number(session.endSoc) > 0 ? `${Math.round(Number(session.endSoc))}%` : ''}
                       </p>
                     </div>
                     <div>
