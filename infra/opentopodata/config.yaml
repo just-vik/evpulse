@@ -1,5 +1,9 @@
-access_control_allow_origin: ""
+access_control_allow_origin: null
 max_locations_per_request: 200
+
+# Use in-process cache — no memcached dependency
+cache_type: SimpleCache
+cache_timeout: 86400
 
 datasets:
   - name: srtm

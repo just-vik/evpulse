@@ -210,7 +210,7 @@ export class ExportService {
       p.outsideTemp?.toFixed(1) ?? '', p.insideTemp?.toFixed(1) ?? '',
       p.batteryTemp?.toFixed(1) ?? '', p.odometer?.toFixed(1) ?? '',
       p.latitude ?? '', p.longitude ?? '',
-      p.elevationM?.toFixed(1) ?? '', p.heading?.toFixed(0) ?? '',
+      (p.elevationM != null && p.elevationM > -9998 ? p.elevationM.toFixed(1) : ''), p.heading?.toFixed(0) ?? '',
     ]);
     return {
       content: toCsv(headers, rows),

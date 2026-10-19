@@ -10,12 +10,17 @@ interface ElevationResult {
 }
 
 const VEHICLE_MASS_KG = 2200;
+// Sentinel written when the API consistently returns null for a point (outside DEM coverage).
+// Excluded from trip recompute queries. Points outside lat 49–52 / lon 3–10 get this.
+const NODATA_SENTINEL = -9999.0;
+// After this many consecutive null results a point is marked NODATA and never retried.
+const NODATA_RETRY_LIMIT = 3;
 
 /**
  * Backfills elevationM on telemetry_points that have lat/lng but no elevation.
  *
  * API: resolves from ELEVATION_API_URL env var. Default: public Open-Elevation.
- * Self-hosted: set to http://tesla-opentopodata:5000/v1/srtm (same POST schema).
+ * Self-hosted: set to http://tesla-opentopodata:5000/v1/srtm (GET, same response schema).
  *
  * After a successful batch, re-calculates trip_stats.elevationGain and
  * trips.efficiencyWhkm (terrain-corrected) for every trip whose points
@@ -24,6 +29,7 @@ const VEHICLE_MASS_KG = 2200;
  *
  * 429 handling: exponential backoff starting at 2 min, doubling up to 1 hour.
  * Resets to baseline on any successful response.
+ * NODATA: points returning null NODATA_RETRY_LIMIT times are marked -9999 (in-memory counter, resets on restart).
  */
 @Injectable()
 export class ElevationEnrichmentService {
@@ -35,6 +41,9 @@ export class ElevationEnrichmentService {
   private backoffUntil: Date | null = null;
   private backoffMs = 2 * 60_000;
   private readonly MAX_BACKOFF_MS = 60 * 60_000;
+
+  // ── NODATA tracking: pointId → consecutive null count ───────────────────────
+  private readonly nodataCount = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -66,14 +75,14 @@ export class ElevationEnrichmentService {
 
       if (!points.length) return;
 
-      const locations = points.map((p) => ({ latitude: p.latitude, longitude: p.longitude }));
+      // Build GET query: lat,lng|lat,lng|... (works for both open-elevation and opentopodata)
+      const locationParam = points
+        .map((p) => `${p.latitude},${p.longitude}`)
+        .join('|');
+      const url = `${this.apiUrl}?locations=${encodeURIComponent(locationParam)}`;
 
       const res = await firstValueFrom(
-        this.http.post<{ results: ElevationResult[] }>(
-          this.apiUrl,
-          { locations },
-          { timeout: 15_000 },
-        ),
+        this.http.get<{ results: ElevationResult[] }>(url, { timeout: 15_000 }),
       );
 
       const results = res.data?.results;
@@ -85,19 +94,35 @@ export class ElevationEnrichmentService {
       }
 
       const enriched: typeof points = [];
+      let nullCount = 0;
       for (let i = 0; i < points.length; i++) {
+        const pt = points[i];
         const elev = results[i]?.elevation;
-        if (elev == null || !Number.isFinite(elev)) continue;
+        if (elev == null || !Number.isFinite(elev)) {
+          nullCount++;
+          const fails = (this.nodataCount.get(pt.id) ?? 0) + 1;
+          this.nodataCount.set(pt.id, fails);
+          if (fails >= NODATA_RETRY_LIMIT) {
+            await this.prisma.$executeRaw`
+              UPDATE telemetry_points SET "elevationM" = ${NODATA_SENTINEL} WHERE id = ${pt.id}
+            `;
+            this.nodataCount.delete(pt.id);
+          }
+          continue;
+        }
+        this.nodataCount.delete(pt.id);
         await this.prisma.$executeRaw`
-          UPDATE telemetry_points SET "elevationM" = ${elev} WHERE id = ${points[i].id}
+          UPDATE telemetry_points SET "elevationM" = ${elev} WHERE id = ${pt.id}
         `;
-        enriched.push(points[i]);
+        enriched.push(pt);
+      }
+
+      if (nullCount > 0) {
+        this.logger.warn(`Elevation: ${nullCount}/${points.length} points returned null (outside DEM coverage?)`);
       }
 
       if (enriched.length > 0) {
-        this.logger.log(
-          `Elevation enriched: ${enriched.length}/${points.length} points`,
-        );
+        this.logger.log(`Elevation enriched: ${enriched.length}/${points.length} points`);
         this.backoffMs = 2 * 60_000;
         this.backoffUntil = null;
 
@@ -146,8 +171,20 @@ export class ElevationEnrichmentService {
           AND "endTime"   >= ${minTs}
       `;
 
+      let recomputed = 0;
+      let skipped = 0;
+      let errors = 0;
       for (const trip of trips) {
-        await this.recomputeTripElevation(vehicleId, trip).catch(() => {});
+        const result = await this.recomputeTripElevation(vehicleId, trip).then(
+          (updated) => (updated ? recomputed++ : skipped++),
+          () => errors++,
+        );
+        void result;
+      }
+      if (trips.length > 0) {
+        this.logger.log(
+          `Elevation trips (vehicle ${vehicleId.slice(-6)}): ${trips.length} matched, ${recomputed} recomputed, ${skipped} skipped, ${errors} errors`,
+        );
       }
     }
   }
@@ -161,7 +198,7 @@ export class ElevationEnrichmentService {
       energyUsedKwh: number | null;
       distanceKm: number | null;
     },
-  ): Promise<void> {
+  ): Promise<boolean> {
     const pts = await this.prisma.$queryRaw<{ elevationM: number }[]>`
       SELECT "elevationM"
       FROM telemetry_points
@@ -169,10 +206,11 @@ export class ElevationEnrichmentService {
         AND timestamp   >= ${trip.startTime}
         AND timestamp   <= ${trip.endTime}
         AND "elevationM" IS NOT NULL
+        AND "elevationM" > ${NODATA_SENTINEL + 1}
       ORDER BY timestamp ASC
     `;
 
-    if (pts.length < 2) return;
+    if (pts.length < 2) return false;
 
     let elevationGain = 0;
     for (let i = 1; i < pts.length; i++) {
@@ -185,7 +223,8 @@ export class ElevationEnrichmentService {
       WHERE "tripId" = ${trip.id}
     `;
 
-    // Terrain-corrected efficiency (net elevation, not cumulative gain)
+    // Terrain-corrected efficiency (net elevation, not cumulative gain).
+    // energyUsedKwh and distanceKm are raw immutable measurements — formula is idempotent.
     const netElevM = pts[pts.length - 1].elevationM - pts[0].elevationM;
     if (trip.energyUsedKwh != null && trip.distanceKm != null && trip.distanceKm > 0) {
       const elevEnergyKwh = +(VEHICLE_MASS_KG * 9.81 * netElevM / 3_600_000).toFixed(4);
@@ -201,7 +240,9 @@ export class ElevationEnrichmentService {
               OR ABS("efficiencyWhkm" - ${corrected}) > 1.0
             )
         `;
+        return true;
       }
     }
+    return true;
   }
 }

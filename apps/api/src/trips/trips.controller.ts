@@ -378,7 +378,7 @@ export class TripsController {
         spd:  p.speed      ?? null,
         pwr:  p.power      ?? null,
         soc:  p.soc        ?? null,
-        elev: p.elevationM ?? null,
+        elev: (p.elevationM != null && p.elevationM > -9998) ? p.elevationM : null,
       })),
     };
   }

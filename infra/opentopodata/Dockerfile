@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Clone opentopodata at a pinned commit (main, 2024-stable)
 # Pin to a specific SHA before any future breaking changes:
 #   git -C /tmp/otd log --oneline -3
-ARG OTDATA_REF=master
+ARG OTDATA_REF=v1.10.2
 RUN git clone --depth=1 --branch ${OTDATA_REF} \
       https://github.com/ajnisbet/opentopodata.git . && \
     pip install --no-cache-dir -r requirements.txt gunicorn==21.2.0 && \

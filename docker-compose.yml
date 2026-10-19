@@ -273,12 +273,18 @@ services:
     security_opt: ["no-new-privileges:true"]
     read_only: true
 
+    environment:
+      DISABLE_MEMCACHE: "1"
+
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+
     volumes:
       - ./infra/opentopodata/config.yaml:/app/config.yaml:ro
       - ./infra/opentopodata/data:/app/data:ro
 
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null 'http://127.0.0.1:5000/v1/srtm?locations=50.0,8.0' 2>/dev/null || exit 1"]
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request,sys,json; d=json.loads(urllib.request.urlopen('http://127.0.0.1:5000/health',timeout=5).read()); sys.exit(0 if d.get('status')=='OK' else 1)\""]
       interval: 30s
       timeout: 10s
       retries: 3
