@@ -28,6 +28,7 @@ import { useTripsPeriodStats } from '@/hooks/usePeriodComparison'
 import { PeriodDeltaBadge } from '@/shared/ui'
 import { PeriodFilterBar, periodToApiRange, type PeriodValue } from '@/shared/ui/PeriodFilterBar'
 import { usePeriodParam } from '@/hooks/usePeriodParam'
+import { computeParkingSocGaps } from '@/lib/parking-gaps'
 const EfficiencyChart = dynamic(
   () => import('@/widgets/charts/EfficiencyChart').then(m => m.EfficiencyChart),
   { ssr: false, loading: () => <div className="h-48 rounded-xl bg-[hsl(var(--secondary)/0.7)] animate-pulse" /> },
@@ -175,38 +176,6 @@ function toEndOfDayIso(dateYmd: string): string {
 }
 
 /** Оценка потери SOC между концом поездки i и началом i+1 (без учёта зарядки между ними). */
-function computeParkingSocGaps(trips: ApiTrip[]) {
-  const done = trips
-    .filter(t => t.endTime && t.endSoc != null && t.startSoc != null)
-    .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
-  const out: {
-    key: string
-    hours: number
-    lossPct: number
-    perHr: number
-    afterEnd: string
-    beforeStart: string
-  }[] = []
-  for (let i = 0; i < done.length - 1; i++) {
-    const a = done[i]
-    const b = done[i + 1]
-    const endA = new Date(a.endTime!).getTime()
-    const startB = new Date(b.startTime).getTime()
-    const hours = (startB - endA) / 3_600_000
-    if (hours < 0.5 || hours > 96) continue
-    const lossPct = (a.endSoc ?? 0) - (b.startSoc ?? 0)
-    if (lossPct < 0.5) continue
-    out.push({
-      key: `${a.id}-${b.id}`,
-      hours,
-      lossPct,
-      perHr: lossPct / hours,
-      afterEnd: a.endTime!,
-      beforeStart: b.startTime,
-    })
-  }
-  return out
-}
 
 function groupByDay(trips: ApiTrip[], t: (k: string) => string, locale?: string) {
   const map = new Map<string, ApiTrip[]>()
@@ -800,6 +769,8 @@ export default function TripsPage() {
         const hasGaps = parkingGaps.length > 0
         const sortedGaps = hasGaps ? [...parkingGaps].sort((a, b) => b.lossPct - a.lossPct) : []
         const totalLoss = parkingGaps.reduce((s, g) => s + g.lossPct, 0)
+        const totalHours = parkingGaps.reduce((s, g) => s + g.hours, 0)
+        const avgPerHr = totalHours > 0 ? totalLoss / totalHours : 0
         return (
           <div className="rounded-2xl border border-[hsl(var(--border)/0.4)] bg-[hsl(var(--secondary)/0.08)] p-4 mb-6">
             {/* Header */}
@@ -853,7 +824,7 @@ export default function TripsPage() {
                     <span className="text-[10px] text-muted-foreground/50 hidden sm:inline truncate">{t('trips.parkingLossHint')}</span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0 ml-2">
-                    <span className="text-[11px] font-semibold tabular-nums text-foreground/70">−{totalLoss.toFixed(1)}% · {parkingGaps.length} {t('trips.parkingGapsCount')}</span>
+                    <span className="text-[11px] font-semibold tabular-nums text-foreground/70">−{totalLoss.toFixed(1)}% · {avgPerHr.toFixed(2)}%/h · {parkingGaps.length} {t('trips.parkingGapsCount')}</span>
                     <ChevronDown size={12} className={`text-muted-foreground transition-transform ${drainsOpen ? 'rotate-180' : ''}`} />
                   </div>
                 </button>
