@@ -263,7 +263,10 @@ services:
   # ──────────────────────────────────────────────
 
   opentopodata:
-    image: ghcr.io/ajnisbet/opentopodata:latest
+    build:
+      context: ./infra/opentopodata
+      dockerfile: Dockerfile
+    image: tesla-opentopodata:latest
     container_name: tesla-opentopodata
     restart: unless-stopped
     cap_drop: ["ALL"]
