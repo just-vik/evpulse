@@ -212,6 +212,12 @@ export class TripGapRecoveryService {
         }
       }
 
+      // Try to get an OSRM road-snapped route so gap-recovered trips show a
+      // plausible path instead of a blank map. Failures are silently ignored.
+      const polyline = await this.fetchOsrmPolyline(
+        a.latitude!, a.longitude!, b.latitude!, b.longitude!,
+      );
+
       // Create recovered trip
       const trip = await this.prisma.trip.create({
         data: {
@@ -228,7 +234,8 @@ export class TripGapRecoveryService {
           energyUsedKwh,
           efficiencyWhkm: efficiencyWhkm != null && efficiencyWhkm <= 600 ? efficiencyWhkm : null,
           costTotal,
-          qualityScore:   30,  // low — no GPS track
+          ...(polyline ? { polyline } : {}),
+          qualityScore:   30,  // low — estimated route, no real GPS track
           drivingScore:   null,
           reliability:    'LOW',
           repairReason:   'gap_recovery',
@@ -260,6 +267,23 @@ export class TripGapRecoveryService {
     }
 
     return { recovered };
+  }
+
+  private async fetchOsrmPolyline(
+    startLat: number, startLon: number,
+    endLat: number, endLon: number,
+  ): Promise<string | null> {
+    try {
+      const base = process.env.OSRM_URL ?? 'http://tesla-osrm:5000';
+      const url = `${base}/route/v1/driving/${startLon},${startLat};${endLon},${endLat}?geometries=polyline&overview=full`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(5_000) });
+      if (!res.ok) return null;
+      const data = await res.json() as any;
+      if (data.code !== 'Ok' || !data.routes?.length) return null;
+      return data.routes[0].geometry as string;
+    } catch {
+      return null;
+    }
   }
 }
 

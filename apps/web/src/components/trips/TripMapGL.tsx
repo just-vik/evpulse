@@ -43,7 +43,10 @@ export default function TripMapGL({ polyline, repairReason, height = 160 }: Prop
     if (lnglats.length === 0) return
 
     const singlePoint = lnglats.length === 1
-    const isReconstructed = repairReason?.includes('reconstructed_from_gps_teleport') ?? false
+    const isReconstructed = (
+      repairReason?.includes('reconstructed_from_gps_teleport') ||
+      repairReason?.includes('gap_recovery')
+    ) ?? false
     let cancelled = false
 
     ;(async () => {

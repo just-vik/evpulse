@@ -1114,6 +1114,14 @@ export class TripDetectorService {
         );
         distanceKm = Math.round(odoDistKm * 10) / 10;
         usedOdometerFallback = true;
+      } else if (odoDistKm > 0.5 && distanceKm > odoDistKm * 1.5) {
+        // GPS outlier jumps inflate the haversine sum (e.g. 22 km GPS vs 9 km odo).
+        // Fall back to odometer to avoid storing a wildly inflated distanceKm.
+        this.logger.debug(
+          `[Trip] Odometer fallback (GPS over-estimate): GPS=${distanceKm.toFixed(2)} km → odo=${odoDistKm.toFixed(2)} km (ratio=${(distanceKm / odoDistKm).toFixed(2)})`,
+        );
+        distanceKm = Math.round(odoDistKm * 10) / 10;
+        usedOdometerFallback = true;
       }
     }
 
